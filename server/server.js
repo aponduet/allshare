@@ -16,16 +16,63 @@ app.get('/', (req, res) => {
   });
 
 //************WebSocket Signaling for Sharing Connection Information***************
-/*
+
 io.on("connection",  (socket)=> {
-     console.log("New client connected");
+     console.log(`New client ${socket.id} connected`);
       //console.log(io.sockets.adapter.rooms);
       //console.log(io);
     //  console.log(socket.id);
 
-    socket.on("join", (roomId) => {
-        socket.join(roomId);
+    socket.on("firstUserInfo", (data) => {
+        socket.broadcast.emit('secondUserInfo', data);
+        console.log(`Second User Info ${data}` );
     });
+
+
+    socket.on("disconnect", (reason) => {
+        socket.broadcast.emit("userDisconnected", 'Hi, He is disconnected');
+        //console.log(`${data['id']} is Disconnected.`);
+        console.log(reason);
+    });
+
+    // Offer from FirstUser
+    socket.on("createOffer", (data) => {
+        console.log(data);
+        console.log("createOffer event is called.");
+        //console.log(session);
+        //socket.broadcast.emit("receiveOffer", { session: data.session });
+        socket.broadcast.emit("receiveOffer", data);
+        
+    })
+
+    // Answer from Second User to First User
+    socket.on("createAnswer", (data) => {
+        console.log("createAnswer event is called.");
+        
+        //socket.broadcast.emit("receiveAnswer", { session: data.session});
+        socket.broadcast.emit("receiveAnswer", data);
+    })
+
+    //Candidate from both
+
+    socket.on("sendCandidateToLocal", (data) => {
+        console.log("sendCandidateToLocal event is called.");
+        
+        
+        //console.log(data);
+        //socket.broadcast.emit("receiveRemoteCandidate", { candidate: data.candidate});
+        socket.broadcast.emit("receiveRemoteCandidate", data);
+    });
+
+    socket.on("sendCandidateToRemote", (data) => {
+        console.log("sendCandidateToLocal event is called.");
+        //console.log(data);
+        //socket.broadcast.emit("receiveLocalCandidate", { candidate: data.candidate});
+        socket.broadcast.emit("receiveLocalCandidate", data);
+    })
+
+    
+    
 
     
 
@@ -46,35 +93,11 @@ io.on("connection",  (socket)=> {
         callback({ originId: socket.id, destinationIds: a });
     })
 
-    socket.on("createOffer", (data) => {
-        console.log(data);
-        var socketId = {
-            originId: data.socketId.destinationId,
-            destinationId: data.socketId.originId
-        }
-        //console.log(session);
-        io.to(data.socketId.destinationId).emit("receiveOffer", { session: data.session, socketId: socketId });
-        //socket.broadcast.emit("receiveOffer", { session: data.session, socketId: socketId });
-    })
+    
 
-    socket.on("createAnswer", (data) => {
-        console.log("createAnswer event is called.");
-        var socketId = { 
-            originId: data.socketId.destinationId,
-            destinationId: data.socketId.originId
-        }
-        io.to(data.socketId.destinationId).emit("receiveAnswer", { session: data.session, socketId: socketId });
-    })
+    
 
-    socket.on("sendCandidate", (data) => {
-        console.log("sendCandidate event is called.");
-        var socketId = {
-            originId: data.socketId.destinationId,
-            destinationId: data.socketId.originId
-        }
-        //console.log(data);
-        io.to(data.socketId.destinationId).emit("receiveCandidate", { candidate: data.candidate, socketId: socketId });
-    })
+    
     socket.on("disconnect", () => {
         console.log("Disconnect event is called.");
         socket.broadcast.emit("userDisconnected", socket.id);
@@ -82,6 +105,6 @@ io.on("connection",  (socket)=> {
     })
 })
 
-*/
+
 
 server.listen(port, () => console.log(`Server Listening on port ${port}`));
