@@ -1,12 +1,20 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
+import 'package:allshare/model/file_info.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sdp_transform/sdp_transform.dart';
 import 'package:allshare/model/profileData.dart';
 import 'package:allshare/view/users.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-
+import 'package:file_picker/file_picker.dart';
 import '../controller/controller.dart';
+import 'package:percent_indicator/percent_indicator.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
@@ -30,6 +38,12 @@ class _MyHomePageState extends State<MyHomePage> {
   RTCDataChannel? sendChannel;
   RTCDataChannel? receiveChannel;
   RTCDataChannelInit? _dataChannelDict;
+  List<Uint8List>? receivedChunks = [];
+  double sendprogress = 0;
+  double receiveprogress = 0;
+  int? totalChunks;
+  bool showSendProgressBar = false;
+  bool showReceiveProgressBar = false;
 
   @override
   dispose() {
@@ -37,7 +51,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (socket.disconnected) {
       socket.disconnect();
     }
-    socket.disconnect();
+    closeAllConnection();
     super.dispose();
   }
 
@@ -47,6 +61,13 @@ class _MyHomePageState extends State<MyHomePage> {
     initSocket();
     super.initState();
     print("InitState is called");
+  }
+
+  closeAllConnection() {
+    remoteConnection!.close();
+    localConnection!.close();
+    sendChannel!.close();
+    receiveChannel!.close();
   }
 
   // Socket Connection Start
@@ -187,8 +208,31 @@ class _MyHomePageState extends State<MyHomePage> {
       // Remote Data channel
       remoteConnection!.onDataChannel = (channel) {
         receiveChannel = channel;
-        receiveChannel!.onMessage = (message) {
-          print(message.text);
+        receiveChannel!.onMessage = (message) async {
+          if (message.isBinary) {
+            receivedChunks!.add(message.binary);
+            // Update progress bar value
+            double percent = (receivedChunks!.length) / totalChunks!;
+
+            setState(() {
+              receiveprogress = percent;
+            });
+            print(receiveprogress);
+            print("Chunk Received Successfully!! ${message.binary}");
+          }
+          if (!message.isBinary) {
+            FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
+            if (fileheaders.isLastChunk) {
+              saveFile(message.text);
+            }
+            setState(() {
+              totalChunks = fileheaders.totalChunk;
+            });
+          }
+          //Show Received Progress
+          setState(() {
+            showReceiveProgressBar = true;
+          });
         };
       };
     });
@@ -257,16 +301,47 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // local data channel
     _dataChannelDict = RTCDataChannelInit();
-    _dataChannelDict!.id = 1;
-    _dataChannelDict!.ordered = true;
-    _dataChannelDict!.maxRetransmitTime = -1;
-    _dataChannelDict!.maxRetransmits = -1;
-    _dataChannelDict!.protocol = 'sctp';
-    _dataChannelDict!.negotiated = false;
+    // _dataChannelDict!.id = 1;
+    // _dataChannelDict!.ordered = true;
+    // _dataChannelDict!.maxRetransmitTime = -1;
+    // _dataChannelDict!.maxRetransmits = -1;
+    // _dataChannelDict!.protocol = 'sctp';
+    // _dataChannelDict!.negotiated = false;
     sendChannel = await localConnection!
         .createDataChannel("sendChannel", _dataChannelDict!);
     sendChannel!.onMessage = (message) {
-      print(message.text);
+      if (message.isBinary) {
+        receivedChunks!.add(message.binary);
+        // Update progress bar value
+        double percent = (receivedChunks!.length) / totalChunks!;
+        setState(() {
+          receiveprogress = percent;
+        });
+
+        print("Chunk Received Successfully!! ${message.binary}");
+      }
+      if (!message.isBinary) {
+        FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
+        if (fileheaders.isLastChunk) {
+          saveFile(message.text);
+        }
+        setState(() {
+          totalChunks = fileheaders.totalChunk;
+        });
+      }
+
+      //Show Received Progress
+      setState(() {
+        showReceiveProgressBar = true;
+      });
+
+      // if (message.isBinary) {
+      //   receivedChunks.add(message.binary);
+      //   print("Chunk Received Successfully!! ${message.binary}");
+      // }
+      // if (!message.isBinary) {
+      //   saveFile(message.text);
+      // }
     };
 
     //Create Offer
@@ -341,14 +416,168 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  //Update Maximum Size
+  // int maximumMessageSize = 16000;
+  // Future updateMaximumMessageSize() async {
+  //   RTCSessionDescription? local = await localConnection!.getLocalDescription();
+  //   RTCSessionDescription? remote =
+  //       await remoteConnection!.getRemoteDescription();
+
+  //   int localMaximumSize = parseMaximumSize(local!);
+  //   int remoteMaximumSize = parseMaximumSize(remote);
+  //   int messageSize = min(localMaximumSize, remoteMaximumSize);
+
+  //   print(
+  //       'SENDER: Updated max message size: $messageSize Local: $localMaximumSize Remote: $remoteMaximumSize ');
+  //   maximumMessageSize = messageSize;
+  // }
+
+  // //Set Max Cunk Size
+  // int parseMaximumSize(RTCSessionDescription? description) {
+  //   var remoteLines = description?.sdp?.split('\r\n') ?? [];
+
+  //   int remoteMaximumSize = 0;
+  //   for (final line in remoteLines) {
+  //     if (line.startsWith('a=max-message-size:')) {
+  //       var string = line.substring('a=max-message-size:'.length);
+  //       remoteMaximumSize = int.parse(string);
+  //       break;
+  //     }
+  //   }
+
+  //   if (remoteMaximumSize == 0) {
+  //     print('SENDER: No max message size session description');
+  //   }
+
+  //   // 16 kb should be supported on all clients so we can use it
+  //   // even if no max message is set
+  //   return max(remoteMaximumSize, maximumMessageSize);
+  // }
+
   //Send Message
   sendtext() {
-    //Send Local message to Remote
+    //Send message to Remote
     String messageText = textInputController.text;
     RTCDataChannelMessage textMessage = RTCDataChannelMessage(messageText);
     offer ? sendChannel!.send(textMessage) : receiveChannel!.send(textMessage);
+    textInputController.text = "";
+  }
 
-    //inputController.text = "";
+  //Send Message
+  File? file;
+  Uint8List? fileInBytes;
+  sendFile() async {
+    //Send files to Remote
+
+    fileInBytes = selectedfile!.bytes;
+    var chunks = [];
+    int chunkSize = 16000;
+    for (var i = 0; i < fileInBytes!.length; i += chunkSize) {
+      chunks.add(fileInBytes!.sublist(
+          i,
+          i + chunkSize > fileInBytes!.length
+              ? fileInBytes!.length
+              : i + chunkSize));
+    }
+
+    for (var i = 0; i <= chunks.length; i++) {
+      if (i == 0) {
+        //Sending total chunk to Receiver
+        FileInfo fileHistory = FileInfo(
+            name: selectedfile!.name,
+            extn: selectedfile!.extension,
+            totalChunk: chunks.length,
+            isLastChunk: false);
+        String info = jsonEncode(fileHistory);
+        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+        print("This is First Message with Total Chunk");
+      }
+      if (i < chunks.length) {
+        RTCDataChannelMessage binaryMessage =
+            RTCDataChannelMessage.fromBinary(chunks[i]);
+        //print(binaryMessage);
+
+        offer
+            ? sendChannel!.send(binaryMessage)
+            : receiveChannel!.send(binaryMessage);
+
+        double percent = i / (chunks.length);
+        setState(() {
+          sendprogress = percent;
+        });
+      }
+      if (i == chunks.length) {
+        FileInfo fileHistory = FileInfo(
+            name: selectedfile!.name,
+            extn: selectedfile!.extension,
+            totalChunk: chunks.length,
+            isLastChunk: true);
+        String info = jsonEncode(fileHistory);
+        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+        setState(() {
+          sendprogress = 1.0;
+        });
+
+        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+        print("Total chunk : ${chunks.length}");
+        print("Last Chunk has been sent");
+      }
+    }
+    // Showing Progress indicator
+    setState(() {
+      showSendProgressBar = true;
+    });
+  }
+
+  //Save Files in Devices
+
+  saveFile(String message) async {
+    if (!kIsWeb) {
+      if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
+        bool status = await Permission.storage.isGranted;
+        if (!status) await Permission.storage.request();
+      }
+    }
+
+    FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message));
+    String? filename = fileheaders.name ?? "";
+    String? extension = fileheaders.extn ?? "";
+    //Convert List<Uint8List> to List<int>  //https://stackoverflow.com/questions/62295468/listuint8list-to-listint-in-dart
+    List<int> readyChunks = [
+      for (var sublist in receivedChunks!) ...sublist,
+    ];
+
+    Uint8List finalChunks = Uint8List.fromList(readyChunks);
+    await FileSaver.instance
+        .saveFile(filename, finalChunks, extension, mimeType: MimeType.OTHER);
+    //Set ReceivedChunk List empty after saving file.
+    setState(() {
+      receivedChunks = null;
+    });
+    print(" Total Received Chunks : ${receivedChunks!.length}");
+    print("${receivedChunks}");
+  }
+
+  //File input Handler
+
+  PlatformFile? selectedfile;
+  inputfile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+
+    if (result != null) {
+      PlatformFile file = result.files.first;
+      setState(() {
+        selectedfile = file;
+      });
+      print(file.name);
+      // print(file.bytes);
+      // print(file.size);
+      // print(file.extension);
+      // print(file.path);
+    } else {
+      print("No Files Selected!!");
+    }
   }
 
   @override
@@ -465,6 +694,14 @@ class _MyHomePageState extends State<MyHomePage> {
               const SizedBox(
                 height: 30,
               ),
+              if (selectedfile != null)
+                Text(
+                  selectedfile!.name,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              const SizedBox(
+                height: 10,
+              ),
 
               // File attach area
               Row(
@@ -472,7 +709,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
-                      onPressed: () {}, icon: const Icon(Icons.attach_file)),
+                      onPressed: inputfile,
+                      icon: const Icon(Icons.attach_file)),
                   const SizedBox(
                     width: 7,
                   ),
@@ -494,51 +732,69 @@ class _MyHomePageState extends State<MyHomePage> {
                     width: 10,
                   ),
                   ElevatedButton(
-                      onPressed: () {}, child: const Text('Send File File')),
+                      onPressed: sendFile, child: const Text('Send File File')),
                 ],
               ),
               const SizedBox(
                 height: 30,
               ),
+              if (showSendProgressBar)
+                LinearPercentIndicator(
+                  width: 800.0,
+                  lineHeight: 14.0,
+                  percent: sendprogress,
+                  backgroundColor: Colors.grey,
+                  progressColor: Colors.blue,
+                ),
+              //Progress Indicator
+
+              if (showReceiveProgressBar)
+                LinearPercentIndicator(
+                  width: 800.0,
+                  lineHeight: 14.0,
+                  percent: receiveprogress,
+                  backgroundColor: Colors.grey,
+                  progressColor: Colors.blue,
+                ),
 
               const SizedBox(
                 height: 20,
               ),
               //Received Files Area
 
-              Container(
-                height: 70,
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                    border: Border.all(width: 1, color: Colors.grey),
-                    borderRadius: const BorderRadius.all(Radius.circular(3))),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 60,
-                      decoration: BoxDecoration(
-                          border: Border.all(width: 1, color: Colors.grey),
-                          borderRadius:
-                              const BorderRadius.all(Radius.circular(5))),
-                      child: const Center(
-                        child: Icon(Icons.image),
-                      ),
-                    ),
-                    const SizedBox(
-                      width: 10,
-                    ),
-                    const Expanded(child: Text('Sohelrana.jpg')),
-                    ElevatedButton(
-                        onPressed: () {},
-                        child: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Text('View'),
-                        ))
-                  ],
-                ),
-              ),
+              // Container(
+              //   height: 70,
+              //   padding: const EdgeInsets.all(5),
+              //   decoration: BoxDecoration(
+              //       border: Border.all(width: 1, color: Colors.grey),
+              //       borderRadius: const BorderRadius.all(Radius.circular(3))),
+              //   child: Row(
+              //     mainAxisAlignment: MainAxisAlignment.start,
+              //     children: [
+              //       Container(
+              //         width: 50,
+              //         height: 60,
+              //         decoration: BoxDecoration(
+              //             border: Border.all(width: 1, color: Colors.grey),
+              //             borderRadius:
+              //                 const BorderRadius.all(Radius.circular(5))),
+              //         child: const Center(
+              //           child: Icon(Icons.image),
+              //         ),
+              //       ),
+              //       const SizedBox(
+              //         width: 10,
+              //       ),
+              //       const Expanded(child: Text('Sohelrana.jpg')),
+              //       ElevatedButton(
+              //           onPressed: () {},
+              //           child: const Padding(
+              //             padding: EdgeInsets.all(8.0),
+              //             child: Text('View'),
+              //           ))
+              //     ],
+              //   ),
+              // ),
             ],
           ),
         ),
