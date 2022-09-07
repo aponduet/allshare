@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -44,6 +45,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int? totalChunks;
   bool showSendProgressBar = false;
   bool showReceiveProgressBar = false;
+  int currentChunkIndex = 0;
 
   @override
   dispose() {
@@ -471,7 +473,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     fileInBytes = selectedfile!.bytes;
     var chunks = [];
-    int chunkSize = 16000;
+    int chunkSize = 262144;
     for (var i = 0; i < fileInBytes!.length; i += chunkSize) {
       chunks.add(fileInBytes!.sublist(
           i,
@@ -479,8 +481,143 @@ class _MyHomePageState extends State<MyHomePage> {
               ? fileInBytes!.length
               : i + chunkSize));
     }
+    sendChannel!.bufferedAmountLowThreshold =
+        16768090; // max allowable buffered amount in Bytes
+    Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (sendChannel!.bufferedAmount! >=
+          sendChannel!.bufferedAmountLowThreshold!) {
+        print(
+            "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
+        Timer(const Duration(seconds: 2), () {
+          print("Checking Buffered amount...");
+        });
+      }
+
+      if (currentChunkIndex == 0) {
+        //Sending total chunk to Receiver
+        FileInfo fileHistory = FileInfo(
+            name: selectedfile!.name,
+            extn: selectedfile!.extension,
+            totalChunk: chunks.length,
+            isLastChunk: false);
+        String info = jsonEncode(fileHistory);
+        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+        print("This is First Message with Total Chunk");
+      }
+
+      if (currentChunkIndex < chunks.length) {
+        RTCDataChannelMessage binaryMessage =
+            RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
+        //print(binaryMessage);
+
+        offer
+            ? sendChannel!.send(binaryMessage)
+            : receiveChannel!.send(binaryMessage);
+
+        double percent = currentChunkIndex / (chunks.length);
+        setState(() {
+          sendprogress = percent;
+        });
+      }
+
+      if (currentChunkIndex == chunks.length) {
+        FileInfo fileHistory = FileInfo(
+            name: selectedfile!.name,
+            extn: selectedfile!.extension,
+            totalChunk: chunks.length,
+            isLastChunk: true);
+        String info = jsonEncode(fileHistory);
+        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+        setState(() {
+          sendprogress = 1.0;
+        });
+
+        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+        print("Total chunk : ${chunks.length}");
+        print("Last Chunk has been sent");
+        timer.cancel();
+      }
+
+      setState(() {
+        currentChunkIndex = currentChunkIndex + 1;
+      });
+    });
+
+    /* sendNext(int currentChunkIndex) {
+      if (sendChannel!.bufferedAmount! >= 1676809) {
+        print(
+            "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
+        Future.delayed(const Duration(seconds: 3), () {
+          print("Checking Buffered amount...");
+          sendNext(currentChunkIndex);
+        });
+
+        //sleep(const Duration(seconds: 1));
+      } else {
+        if (currentChunkIndex == 0) {
+          //Sending total chunk to Receiver
+          FileInfo fileHistory = FileInfo(
+              name: selectedfile!.name,
+              extn: selectedfile!.extension,
+              totalChunk: chunks.length,
+              isLastChunk: false);
+          String info = jsonEncode(fileHistory);
+          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+          print("This is First Message with Total Chunk");
+        }
+
+        if (currentChunkIndex < chunks.length) {
+          RTCDataChannelMessage binaryMessage =
+              RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
+          //print(binaryMessage);
+
+          offer
+              ? sendChannel!.send(binaryMessage)
+              : receiveChannel!.send(binaryMessage);
+
+          double percent = currentChunkIndex / (chunks.length);
+          setState(() {
+            sendprogress = percent;
+          });
+        }
+
+        if (currentChunkIndex == chunks.length) {
+          FileInfo fileHistory = FileInfo(
+              name: selectedfile!.name,
+              extn: selectedfile!.extension,
+              totalChunk: chunks.length,
+              isLastChunk: true);
+          String info = jsonEncode(fileHistory);
+          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+          setState(() {
+            sendprogress = 1.0;
+          });
+
+          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+          print("Total chunk : ${chunks.length}");
+          print("Last Chunk has been sent");
+        }
+      }
+    }      */
+
+    //Large File Sending System codes
+
+    /* 
 
     for (var i = 0; i <= chunks.length; i++) {
+      //Large File Sending System codes
+      //bool sendNextChunk = true;
+
+      if (sendChannel!.bufferedAmount! >= 1676809) {
+        print(
+            "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
+        Future.delayed(const Duration(seconds: 3));
+
+        //sleep(const Duration(seconds: 1));
+      }
+
       if (i == 0) {
         //Sending total chunk to Receiver
         FileInfo fileHistory = FileInfo(
@@ -524,6 +661,9 @@ class _MyHomePageState extends State<MyHomePage> {
         print("Last Chunk has been sent");
       }
     }
+
+    */
+
     // Showing Progress indicator
     setState(() {
       showSendProgressBar = true;
