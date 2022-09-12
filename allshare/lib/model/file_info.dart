@@ -2,9 +2,19 @@ class FileInfo {
   String? name;
   String? extn;
   int? totalChunk;
-  bool isLastChunk = false;
+  bool isLastChunk;
+  bool isFirstChunk;
+  bool isFileInfo;
+  String? textmessage;
 
-  FileInfo({this.name, this.extn, this.totalChunk, required this.isLastChunk});
+  FileInfo(
+      {this.name,
+      this.extn,
+      this.totalChunk,
+      required this.isLastChunk,
+      required this.isFirstChunk,
+      required this.isFileInfo,
+      this.textmessage});
 
   //Map data to Json
   Map<String, dynamic> toJson() => {
@@ -12,6 +22,9 @@ class FileInfo {
         'extn': extn,
         'totalChunk': totalChunk,
         'isLastChunk': isLastChunk,
+        'isFileInfo': isFileInfo,
+        'textmessage': textmessage,
+        'isFirstChunk': isFirstChunk,
       };
 
   //Json data to Object data
@@ -20,5 +33,8 @@ class FileInfo {
         extn: json['extn'],
         totalChunk: json['totalChunk'],
         isLastChunk: json['isLastChunk'],
+        isFileInfo: json['isFileInfo'],
+        textmessage: json['textmessage'],
+        isFirstChunk: json['isFirstChunk'],
       );
 }

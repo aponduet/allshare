@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 import 'package:allshare/model/file_info.dart';
+import 'package:allshare/view/success_alert.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -14,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:file_picker/file_picker.dart';
-import '../controller/controller.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 
 class MyHomePage extends StatefulWidget {
@@ -42,10 +41,13 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Uint8List>? receivedChunks = [];
   double sendprogress = 0;
   double receiveprogress = 0;
+  List<Uint8List> chunks = [];
   int? totalChunks;
   bool showSendProgressBar = false;
   bool showReceiveProgressBar = false;
-  int currentChunkIndex = 0;
+  int currentChunkId = 0;
+  PlatformFile? selectedfile;
+  bool isSendOrReceiveSuccess = false;
 
   @override
   dispose() {
@@ -56,6 +58,8 @@ class _MyHomePageState extends State<MyHomePage> {
     closeAllConnection();
     super.dispose();
   }
+
+  //Clear all previous send data
 
   //Initiate all connection
   @override
@@ -210,7 +214,13 @@ class _MyHomePageState extends State<MyHomePage> {
       // Remote Data channel
       remoteConnection!.onDataChannel = (channel) {
         receiveChannel = channel;
+
         receiveChannel!.onMessage = (message) async {
+          setState(() {
+            //Hide Send Progress Indicator
+            showSendProgressBar = false;
+            isSendOrReceiveSuccess = false;
+          });
           if (message.isBinary) {
             receivedChunks!.add(message.binary);
             // Update progress bar value
@@ -218,23 +228,32 @@ class _MyHomePageState extends State<MyHomePage> {
 
             setState(() {
               receiveprogress = percent;
+              //Show Received Progress Indicator
+              showReceiveProgressBar = true;
             });
-            print(receiveprogress);
-            print("Chunk Received Successfully!! ${message.binary}");
+
+            //print("Chunk Received Successfully!! ${message.binary}");
           }
           if (!message.isBinary) {
             FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
+            if (!fileheaders.isFileInfo) {
+              //used to show text on chatbox
+              print(fileheaders.textmessage);
+            }
+
+            if (fileheaders.isFirstChunk) {
+              totalChunks = fileheaders.totalChunk;
+            }
+            //save file to storage or download in web
             if (fileheaders.isLastChunk) {
+              setState(() {
+                receiveprogress = 1;
+                showReceiveProgressBar = false;
+                isSendOrReceiveSuccess = true;
+              });
               saveFile(message.text);
             }
-            setState(() {
-              totalChunks = fileheaders.totalChunk;
-            });
           }
-          //Show Received Progress
-          setState(() {
-            showReceiveProgressBar = true;
-          });
         };
       };
     });
@@ -303,47 +322,53 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // local data channel
     _dataChannelDict = RTCDataChannelInit();
-    // _dataChannelDict!.id = 1;
-    // _dataChannelDict!.ordered = true;
-    // _dataChannelDict!.maxRetransmitTime = -1;
-    // _dataChannelDict!.maxRetransmits = -1;
-    // _dataChannelDict!.protocol = 'sctp';
-    // _dataChannelDict!.negotiated = false;
+    _dataChannelDict!.id = 1;
+    _dataChannelDict!.ordered = true;
+    _dataChannelDict!.maxRetransmitTime = -1;
+    _dataChannelDict!.maxRetransmits = -1;
+    _dataChannelDict!.protocol = 'sctp';
+    _dataChannelDict!.negotiated = false;
     sendChannel = await localConnection!
         .createDataChannel("sendChannel", _dataChannelDict!);
     sendChannel!.onMessage = (message) {
+      setState(() {
+        //Hide Send Progress Indicator
+        showSendProgressBar = false;
+        isSendOrReceiveSuccess = false;
+      });
       if (message.isBinary) {
         receivedChunks!.add(message.binary);
         // Update progress bar value
         double percent = (receivedChunks!.length) / totalChunks!;
+
         setState(() {
           receiveprogress = percent;
+          //Show Received Progress Indicator
+          showReceiveProgressBar = true;
         });
 
         print("Chunk Received Successfully!! ${message.binary}");
       }
       if (!message.isBinary) {
         FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
+        if (!fileheaders.isFileInfo) {
+          //used to show text on chatbox
+          print(fileheaders.textmessage);
+        }
+
+        if (fileheaders.isFirstChunk) {
+          totalChunks = fileheaders.totalChunk;
+        }
+        //save file to storage or download in web
         if (fileheaders.isLastChunk) {
+          setState(() {
+            receiveprogress = 1;
+            showReceiveProgressBar = false;
+            isSendOrReceiveSuccess = true;
+          });
           saveFile(message.text);
         }
-        setState(() {
-          totalChunks = fileheaders.totalChunk;
-        });
       }
-
-      //Show Received Progress
-      setState(() {
-        showReceiveProgressBar = true;
-      });
-
-      // if (message.isBinary) {
-      //   receivedChunks.add(message.binary);
-      //   print("Chunk Received Successfully!! ${message.binary}");
-      // }
-      // if (!message.isBinary) {
-      //   saveFile(message.text);
-      // }
     };
 
     //Create Offer
@@ -459,98 +484,245 @@ class _MyHomePageState extends State<MyHomePage> {
   //Send Message
   sendtext() {
     //Send message to Remote
-    String messageText = textInputController.text;
-    RTCDataChannelMessage textMessage = RTCDataChannelMessage(messageText);
-    offer ? sendChannel!.send(textMessage) : receiveChannel!.send(textMessage);
+    //Sending total chunk to Receiver
+    FileInfo messageHistory = FileInfo(
+        textmessage: textInputController.text,
+        isLastChunk: false,
+        isFirstChunk: false,
+        isFileInfo: false);
+    String info = jsonEncode(messageHistory);
+    RTCDataChannelMessage messageText = RTCDataChannelMessage(info);
+    offer ? sendChannel!.send(messageText) : receiveChannel!.send(messageText);
+    print(messageHistory.textmessage);
+
+    // String messageText = textInputController.text;
+    // RTCDataChannelMessage textMessage = RTCDataChannelMessage(messageText);
+    // offer ? sendChannel!.send(textMessage) : receiveChannel!.send(textMessage);
+
     textInputController.text = "";
   }
 
   //Send Message
   File? file;
   Uint8List? fileInBytes;
+  int x = 0;
   sendFile() async {
-    //Send files to Remote
+    // sendChannel!.bufferedAmountLowThreshold =
+    //     16768090; // max allowable buffered amount in Bytes
+    // Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    //   if (sendChannel!.bufferedAmount! >=
+    //       sendChannel!.bufferedAmountLowThreshold!) {
+    //     print(
+    //         "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
+    //     Timer(const Duration(seconds: 2), () {
+    //       print("Checking Buffered amount...");
+    //     });
+    //   }
 
-    fileInBytes = selectedfile!.bytes;
-    var chunks = [];
-    int chunkSize = 262144;
-    for (var i = 0; i < fileInBytes!.length; i += chunkSize) {
-      chunks.add(fileInBytes!.sublist(
-          i,
-          i + chunkSize > fileInBytes!.length
-              ? fileInBytes!.length
-              : i + chunkSize));
+    //   if (currentChunkIndex == 0) {
+    //     //Sending total chunk to Receiver
+    //     FileInfo fileHistory = FileInfo(
+    //         name: selectedfile!.name,
+    //         extn: selectedfile!.extension,
+    //         totalChunk: chunks.length,
+    //         isLastChunk: false);
+    //     String info = jsonEncode(fileHistory);
+    //     RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+    //     offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+    //     print("This is First Message with Total Chunk");
+    //   }
+
+    //   if (currentChunkIndex < chunks.length) {
+    //     RTCDataChannelMessage binaryMessage =
+    //         RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
+    //     //print(binaryMessage);
+
+    //     offer
+    //         ? sendChannel!.send(binaryMessage)
+    //         : receiveChannel!.send(binaryMessage);
+
+    //     double percent = currentChunkIndex / (chunks.length);
+    //     setState(() {
+    //       sendprogress = percent;
+    //     });
+    //   }
+
+    //   if (currentChunkIndex == chunks.length) {
+    //     FileInfo fileHistory = FileInfo(
+    //         name: selectedfile!.name,
+    //         extn: selectedfile!.extension,
+    //         totalChunk: chunks.length,
+    //         isLastChunk: true);
+    //     String info = jsonEncode(fileHistory);
+    //     RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+    //     setState(() {
+    //       sendprogress = 1.0;
+    //     });
+
+    //     offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+    //     print("Total chunk : ${chunks.length}");
+    //     print("Last Chunk has been sent");
+    //     timer.cancel();
+    //   }
+
+    //   setState(() {
+    //     currentChunkIndex = currentChunkIndex + 1;
+    //   });
+    // });
+
+    //Large File Sending New System
+    //Send Files from Local to Remote
+
+    sendFilesLocalToRemote(int currentChunkIndex) {
+      if (sendChannel!.bufferedAmount == 0 ||
+          sendChannel!.bufferedAmount == null) {
+        print("Send Bucket is Empty!");
+        if (currentChunkIndex == 0) {
+          print("First condition called");
+          //Sending total chunk to Receiver
+          FileInfo fileHistory = FileInfo(
+              name: selectedfile!.name,
+              extn: selectedfile!.extension,
+              totalChunk: chunks.length,
+              isLastChunk: false,
+              isFirstChunk: true,
+              isFileInfo: true);
+
+          String info = jsonEncode(fileHistory);
+          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+          print("This is First Message with Total Chunk");
+        }
+
+        if (currentChunkIndex < chunks.length) {
+          print("Second condition called");
+          RTCDataChannelMessage binaryMessage =
+              RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
+          //print(binaryMessage);
+
+          offer
+              ? sendChannel!.send(binaryMessage)
+              : receiveChannel!.send(binaryMessage);
+
+          double percent = currentChunkIndex / (chunks.length);
+          setState(() {
+            sendprogress = percent;
+          });
+        }
+
+        if (currentChunkIndex == chunks.length) {
+          print("Third condition called");
+          FileInfo fileHistory = FileInfo(
+              name: selectedfile!.name,
+              extn: selectedfile!.extension,
+              totalChunk: chunks.length,
+              isLastChunk: true,
+              isFirstChunk: false,
+              isFileInfo: true);
+          String info = jsonEncode(fileHistory);
+          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+
+          setState(() {
+            sendprogress = 1.0;
+            showSendProgressBar = !showSendProgressBar;
+            isSendOrReceiveSuccess = !isSendOrReceiveSuccess;
+          });
+
+          print("sendchanell buffered abount : ${sendChannel!.bufferedAmount}");
+          print("Total chunk : ${chunks.length}");
+          print("Last Chunk has been sent");
+
+          //x = 0;
+        }
+        if (currentChunkIndex < chunks.length) {
+          currentChunkId = currentChunkIndex + 1;
+          sendFilesLocalToRemote(currentChunkId);
+        }
+      } else {
+        Timer(const Duration(milliseconds: 100), () {
+          print("Waiting untill the Buffered amount is zero or null");
+          sendFilesLocalToRemote(currentChunkId);
+        });
+      }
     }
-    sendChannel!.bufferedAmountLowThreshold =
-        16768090; // max allowable buffered amount in Bytes
-    Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (sendChannel!.bufferedAmount! >=
-          sendChannel!.bufferedAmountLowThreshold!) {
-        print(
-            "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
-        Timer(const Duration(seconds: 2), () {
-          print("Checking Buffered amount...");
+
+    //Send Files From Remote to Local
+    sendFilesRemoteToLocal(int currentChunkIndex) {
+      if (receiveChannel!.bufferedAmount == 0 ||
+          receiveChannel!.bufferedAmount == null) {
+        print("Send Bucket is Empty!");
+        if (currentChunkIndex == 0) {
+          //Sending total chunk to Receiver
+          FileInfo fileHistory = FileInfo(
+              name: selectedfile!.name,
+              extn: selectedfile!.extension,
+              totalChunk: chunks.length,
+              isLastChunk: false,
+              isFirstChunk: true,
+              isFileInfo: true);
+
+          String info = jsonEncode(fileHistory);
+          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+          print("This is First Message with Total Chunk");
+        }
+
+        if (currentChunkIndex < chunks.length) {
+          RTCDataChannelMessage binaryMessage =
+              RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
+          //print(binaryMessage);
+
+          offer
+              ? sendChannel!.send(binaryMessage)
+              : receiveChannel!.send(binaryMessage);
+
+          double percent = currentChunkIndex / (chunks.length);
+          setState(() {
+            sendprogress = percent;
+          });
+        }
+
+        if (currentChunkIndex == chunks.length) {
+          FileInfo fileHistory = FileInfo(
+              name: selectedfile!.name,
+              extn: selectedfile!.extension,
+              totalChunk: chunks.length,
+              isLastChunk: true,
+              isFirstChunk: false,
+              isFileInfo: true);
+          String info = jsonEncode(fileHistory);
+          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
+          setState(() {
+            sendprogress = 1.0;
+            showSendProgressBar = !showSendProgressBar;
+            isSendOrReceiveSuccess = !isSendOrReceiveSuccess;
+          });
+
+          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+
+          print("Total chunk : ${chunks.length}");
+          print("Last Chunk has been sent");
+        }
+        if (currentChunkIndex < chunks.length) {
+          currentChunkId = currentChunkIndex + 1;
+          sendFilesRemoteToLocal(currentChunkId);
+        }
+      } else {
+        Timer(const Duration(milliseconds: 100), () {
+          print("Waiting untill the Buffered amount is zero or null");
+          sendFilesRemoteToLocal(currentChunkId);
         });
       }
+    }
 
-      if (currentChunkIndex == 0) {
-        //Sending total chunk to Receiver
-        FileInfo fileHistory = FileInfo(
-            name: selectedfile!.name,
-            extn: selectedfile!.extension,
-            totalChunk: chunks.length,
-            isLastChunk: false);
-        String info = jsonEncode(fileHistory);
-        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-        print("This is First Message with Total Chunk");
-      }
-
-      if (currentChunkIndex < chunks.length) {
-        RTCDataChannelMessage binaryMessage =
-            RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
-        //print(binaryMessage);
-
-        offer
-            ? sendChannel!.send(binaryMessage)
-            : receiveChannel!.send(binaryMessage);
-
-        double percent = currentChunkIndex / (chunks.length);
-        setState(() {
-          sendprogress = percent;
-        });
-      }
-
-      if (currentChunkIndex == chunks.length) {
-        FileInfo fileHistory = FileInfo(
-            name: selectedfile!.name,
-            extn: selectedfile!.extension,
-            totalChunk: chunks.length,
-            isLastChunk: true);
-        String info = jsonEncode(fileHistory);
-        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-        setState(() {
-          sendprogress = 1.0;
-        });
-
-        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-        print("Total chunk : ${chunks.length}");
-        print("Last Chunk has been sent");
-        timer.cancel();
-      }
-
-      setState(() {
-        currentChunkIndex = currentChunkIndex + 1;
-      });
-    });
-
-    /* sendNext(int currentChunkIndex) {
+    /* sendFilesLocalToRemote(int currentChunkIndex) {
       if (sendChannel!.bufferedAmount! >= 1676809) {
         print(
             "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
         Future.delayed(const Duration(seconds: 3), () {
           print("Checking Buffered amount...");
-          sendNext(currentChunkIndex);
+          sendFilesLocalToRemote(currentChunkIndex);
         });
 
         //sleep(const Duration(seconds: 1));
@@ -608,7 +780,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     for (var i = 0; i <= chunks.length; i++) {
       //Large File Sending System codes
-      //bool sendNextChunk = true;
+      //bool sendFilesLocalToRemoteChunk = true;
 
       if (sendChannel!.bufferedAmount! >= 1676809) {
         print(
@@ -665,6 +837,9 @@ class _MyHomePageState extends State<MyHomePage> {
     */
 
     // Showing Progress indicator
+    offer
+        ? sendFilesLocalToRemote(currentChunkId)
+        : sendFilesRemoteToLocal(currentChunkId);
     setState(() {
       showSendProgressBar = true;
     });
@@ -689,32 +864,50 @@ class _MyHomePageState extends State<MyHomePage> {
     ];
 
     Uint8List finalChunks = Uint8List.fromList(readyChunks);
-    await FileSaver.instance
+    String savingstatus = await FileSaver.instance
         .saveFile(filename, finalChunks, extension, mimeType: MimeType.OTHER);
+
     //Set ReceivedChunk List empty after saving file.
-    setState(() {
-      receivedChunks = null;
-    });
-    print(" Total Received Chunks : ${receivedChunks!.length}");
-    print("${receivedChunks}");
+    if (savingstatus == 'Downloads') {
+      print("Received chunk Length : ${receivedChunks!.length}");
+      print("Received chunk is clearing");
+      receivedChunks!.clear();
+      print("Received chunk Length : ${receivedChunks!.length}");
+    }
   }
 
-  //File input Handler
+//Reset previous sending history
+  void reset() {
+    currentChunkId = 0;
+    chunks = [];
+    selectedfile = null;
+  }
 
-  PlatformFile? selectedfile;
-  inputfile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
+//Select Files to send
+  selectFile() async {
+    reset(); //First Clear the previous history of chunks
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      withData:
+          true, //If null is returned in desktop , follow https://github.com/miguelpruivo/flutter_file_picker/issues/817
+    );
 
     if (result != null) {
       PlatformFile file = result.files.first;
       setState(() {
+        isSendOrReceiveSuccess = false;
         selectedfile = file;
       });
-      print(file.name);
-      // print(file.bytes);
-      // print(file.size);
-      // print(file.extension);
-      // print(file.path);
+
+      //Make small chunk of message
+      fileInBytes = selectedfile!.bytes;
+      int chunkSize = 262144;
+      for (var i = 0; i < fileInBytes!.length; i += chunkSize) {
+        chunks.add(fileInBytes!.sublist(
+            i,
+            i + chunkSize > fileInBytes!.length
+                ? fileInBytes!.length
+                : i + chunkSize));
+      }
     } else {
       print("No Files Selected!!");
     }
@@ -849,7 +1042,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
-                      onPressed: inputfile,
+                      onPressed: selectFile,
                       icon: const Icon(Icons.attach_file)),
                   const SizedBox(
                     width: 7,
@@ -866,35 +1059,56 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(
                     width: 10,
                   ),
-                  ElevatedButton(
-                      onPressed: sendtext, child: const Text('Send Text')),
-                  const SizedBox(
-                    width: 10,
-                  ),
-                  ElevatedButton(
-                      onPressed: sendFile, child: const Text('Send File File')),
+                  chunks.isEmpty
+                      ? ElevatedButton(
+                          onPressed: sendtext, child: const Text('Send Text'))
+                      : ElevatedButton(
+                          onPressed: sendFile, child: const Text('Send File')),
                 ],
               ),
               const SizedBox(
                 height: 30,
               ),
+              //Linear Progress Indicator
               if (showSendProgressBar)
                 LinearPercentIndicator(
                   width: 800.0,
-                  lineHeight: 14.0,
+                  lineHeight: 20.0,
                   percent: sendprogress,
                   backgroundColor: Colors.grey,
                   progressColor: Colors.blue,
+                  //animation: true,
+                  //animationDuration: 1000,
+                  barRadius: const Radius.circular(10),
+                  center: Text(
+                    "${(sendprogress * 100).round()}%",
+                    style: const TextStyle(
+                        fontSize: 12.0,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black),
+                  ),
                 ),
+
+              if (isSendOrReceiveSuccess) const SuccessAlert(),
               //Progress Indicator
 
               if (showReceiveProgressBar)
                 LinearPercentIndicator(
+                  //animation: true,
+                  //animationDuration: 1000,
                   width: 800.0,
-                  lineHeight: 14.0,
+                  lineHeight: 20.0,
                   percent: receiveprogress,
-                  backgroundColor: Colors.grey,
-                  progressColor: Colors.blue,
+                  barRadius: const Radius.circular(10),
+                  progressColor: Colors.blue[400],
+                  backgroundColor: Colors.grey[300],
+                  center: Text(
+                    "${(receiveprogress * 100).round()}%",
+                    style: const TextStyle(
+                        fontSize: 12.0,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black),
+                  ),
                 ),
 
               const SizedBox(
