@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:allshare/model/file_info.dart';
+import 'package:allshare/view/saving_indicator.dart';
 import 'package:allshare/view/success_alert.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
@@ -15,6 +16,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:file_picker/file_picker.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+
+import '../view/saving_progress.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
@@ -43,11 +46,15 @@ class _MyHomePageState extends State<MyHomePage> {
   double receiveprogress = 0;
   List<Uint8List> chunks = [];
   int? totalChunks;
+  File? file;
+  Uint8List? fileInBytes;
   bool showSendProgressBar = false;
   bool showReceiveProgressBar = false;
   int currentChunkId = 0;
   PlatformFile? selectedfile;
-  bool isSendOrReceiveSuccess = false;
+  bool isSendSuccess = false;
+  bool isSavedFile = false;
+  bool isSaving = false;
 
   @override
   dispose() {
@@ -219,7 +226,7 @@ class _MyHomePageState extends State<MyHomePage> {
           setState(() {
             //Hide Send Progress Indicator
             showSendProgressBar = false;
-            isSendOrReceiveSuccess = false;
+            isSendSuccess = false;
           });
           if (message.isBinary) {
             receivedChunks!.add(message.binary);
@@ -249,8 +256,9 @@ class _MyHomePageState extends State<MyHomePage> {
               setState(() {
                 receiveprogress = 1;
                 showReceiveProgressBar = false;
-                isSendOrReceiveSuccess = true;
+                isSaving = true;
               });
+
               saveFile(message.text);
             }
           }
@@ -334,7 +342,7 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         //Hide Send Progress Indicator
         showSendProgressBar = false;
-        isSendOrReceiveSuccess = false;
+        isSendSuccess = false;
       });
       if (message.isBinary) {
         receivedChunks!.add(message.binary);
@@ -347,7 +355,7 @@ class _MyHomePageState extends State<MyHomePage> {
           showReceiveProgressBar = true;
         });
 
-        print("Chunk Received Successfully!! ${message.binary}");
+        //print("Chunk Received Successfully!! ${message.binary}");
       }
       if (!message.isBinary) {
         FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
@@ -363,8 +371,8 @@ class _MyHomePageState extends State<MyHomePage> {
         if (fileheaders.isLastChunk) {
           setState(() {
             receiveprogress = 1;
+            isSaving = true;
             showReceiveProgressBar = false;
-            isSendOrReceiveSuccess = true;
           });
           saveFile(message.text);
         }
@@ -503,76 +511,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   //Send Message
-  File? file;
-  Uint8List? fileInBytes;
-  int x = 0;
+
   sendFile() async {
-    // sendChannel!.bufferedAmountLowThreshold =
-    //     16768090; // max allowable buffered amount in Bytes
-    // Timer.periodic(const Duration(milliseconds: 100), (timer) {
-    //   if (sendChannel!.bufferedAmount! >=
-    //       sendChannel!.bufferedAmountLowThreshold!) {
-    //     print(
-    //         "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
-    //     Timer(const Duration(seconds: 2), () {
-    //       print("Checking Buffered amount...");
-    //     });
-    //   }
-
-    //   if (currentChunkIndex == 0) {
-    //     //Sending total chunk to Receiver
-    //     FileInfo fileHistory = FileInfo(
-    //         name: selectedfile!.name,
-    //         extn: selectedfile!.extension,
-    //         totalChunk: chunks.length,
-    //         isLastChunk: false);
-    //     String info = jsonEncode(fileHistory);
-    //     RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-    //     offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-    //     print("This is First Message with Total Chunk");
-    //   }
-
-    //   if (currentChunkIndex < chunks.length) {
-    //     RTCDataChannelMessage binaryMessage =
-    //         RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
-    //     //print(binaryMessage);
-
-    //     offer
-    //         ? sendChannel!.send(binaryMessage)
-    //         : receiveChannel!.send(binaryMessage);
-
-    //     double percent = currentChunkIndex / (chunks.length);
-    //     setState(() {
-    //       sendprogress = percent;
-    //     });
-    //   }
-
-    //   if (currentChunkIndex == chunks.length) {
-    //     FileInfo fileHistory = FileInfo(
-    //         name: selectedfile!.name,
-    //         extn: selectedfile!.extension,
-    //         totalChunk: chunks.length,
-    //         isLastChunk: true);
-    //     String info = jsonEncode(fileHistory);
-    //     RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-    //     setState(() {
-    //       sendprogress = 1.0;
-    //     });
-
-    //     offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-    //     print("Total chunk : ${chunks.length}");
-    //     print("Last Chunk has been sent");
-    //     timer.cancel();
-    //   }
-
-    //   setState(() {
-    //     currentChunkIndex = currentChunkIndex + 1;
-    //   });
-    // });
-
     //Large File Sending New System
     //Send Files from Local to Remote
-
     sendFilesLocalToRemote(int currentChunkIndex) {
       if (sendChannel!.bufferedAmount == 0 ||
           sendChannel!.bufferedAmount == null) {
@@ -626,13 +568,12 @@ class _MyHomePageState extends State<MyHomePage> {
           setState(() {
             sendprogress = 1.0;
             showSendProgressBar = !showSendProgressBar;
-            isSendOrReceiveSuccess = !isSendOrReceiveSuccess;
+            isSendSuccess = !isSendSuccess;
           });
 
           print("sendchanell buffered abount : ${sendChannel!.bufferedAmount}");
           print("Total chunk : ${chunks.length}");
           print("Last Chunk has been sent");
-
           //x = 0;
         }
         if (currentChunkIndex < chunks.length) {
@@ -696,7 +637,7 @@ class _MyHomePageState extends State<MyHomePage> {
           setState(() {
             sendprogress = 1.0;
             showSendProgressBar = !showSendProgressBar;
-            isSendOrReceiveSuccess = !isSendOrReceiveSuccess;
+            isSendSuccess = !isSendSuccess;
           });
 
           offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
@@ -867,13 +808,19 @@ class _MyHomePageState extends State<MyHomePage> {
     String savingstatus = await FileSaver.instance
         .saveFile(filename, finalChunks, extension, mimeType: MimeType.OTHER);
 
-    //Set ReceivedChunk List empty after saving file.
-    if (savingstatus == 'Downloads') {
-      print("Received chunk Length : ${receivedChunks!.length}");
-      print("Received chunk is clearing");
-      receivedChunks!.clear();
-      print("Received chunk Length : ${receivedChunks!.length}");
+    if (savingstatus != "") {
+      setState(() {
+        isSavedFile = true;
+        isSaving = false;
+      });
     }
+
+    //Set ReceivedChunk List empty after saving file.
+    print(savingstatus);
+    print("Received chunk Length : ${receivedChunks!.length}");
+    print("Received chunk is clearing");
+    receivedChunks!.clear();
+    print("Received chunk Length : ${receivedChunks!.length}");
   }
 
 //Reset previous sending history
@@ -881,6 +828,9 @@ class _MyHomePageState extends State<MyHomePage> {
     currentChunkId = 0;
     chunks = [];
     selectedfile = null;
+    isSaving = false;
+    isSavedFile = false;
+    isSendSuccess = false;
   }
 
 //Select Files to send
@@ -894,7 +844,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (result != null) {
       PlatformFile file = result.files.first;
       setState(() {
-        isSendOrReceiveSuccess = false;
+        isSendSuccess = false;
         selectedfile = file;
       });
 
@@ -1089,7 +1039,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
 
-              if (isSendOrReceiveSuccess) const SuccessAlert(),
+              if (isSendSuccess) const SuccessAlert(),
+              if (isSaving) const FileSavingIndicator(),
+
               //Progress Indicator
 
               if (showReceiveProgressBar)
@@ -1110,10 +1062,22 @@ class _MyHomePageState extends State<MyHomePage> {
                         color: Colors.black),
                   ),
                 ),
+              //show saving Indicator
 
-              const SizedBox(
-                height: 20,
-              ),
+              if (isSavedFile) const FileSaved(),
+
+              // FutureBuilder(
+              //     future: savingStatus,
+              //     builder: ((context, snapshot) {
+              //       if (snapshot.hasData) {
+              //         return const FileSaved();
+              //       } else if (snapshot.hasError) {
+              //         return const Text("Failed to save file!!");
+              //       } else {
+              //         return const FileSavingIndicator();
+              //       }
+              //     })),
+
               //Received Files Area
 
               // Container(
