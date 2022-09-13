@@ -83,6 +83,18 @@ class _MyHomePageState extends State<MyHomePage> {
     receiveChannel!.close();
   }
 
+  //Dismiss Success alert
+  dismissAlert() {
+    Timer(const Duration(seconds: 3), (() {
+      setState(() {
+        isSavedFile = false;
+        isSendSuccess = false;
+      });
+      //Reset local state of previous send history
+      localreset();
+    }));
+  }
+
   // Socket Connection Start
   void initSocket() {
     socket = IO.io('http://localhost:3000', <String, dynamic>{
@@ -571,6 +583,9 @@ class _MyHomePageState extends State<MyHomePage> {
             isSendSuccess = !isSendSuccess;
           });
 
+          //Dismiss success alert
+          dismissAlert();
+
           print("sendchanell buffered abount : ${sendChannel!.bufferedAmount}");
           print("Total chunk : ${chunks.length}");
           print("Last Chunk has been sent");
@@ -641,6 +656,9 @@ class _MyHomePageState extends State<MyHomePage> {
           });
 
           offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
+
+          //Dismiss success alert
+          dismissAlert();
 
           print("Total chunk : ${chunks.length}");
           print("Last Chunk has been sent");
@@ -815,6 +833,9 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     }
 
+    //Dismiss success alert
+    dismissAlert();
+
     //Set ReceivedChunk List empty after saving file.
     print(savingstatus);
     print("Received chunk Length : ${receivedChunks!.length}");
@@ -824,8 +845,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
 //Reset previous sending history
-  void reset() {
-    currentChunkId = 0;
+  void localreset() {
+    currentChunkId = 0; //very important
     chunks = [];
     selectedfile = null;
     isSaving = false;
@@ -835,7 +856,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
 //Select Files to send
   selectFile() async {
-    reset(); //First Clear the previous history of chunks
+    localreset(); //First Clear the previous history of chunks
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       withData:
           true, //If null is returned in desktop , follow https://github.com/miguelpruivo/flutter_file_picker/issues/817
