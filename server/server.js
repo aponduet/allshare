@@ -23,8 +23,8 @@ io.on("connection",  (socket)=> {
       //console.log(io);
     //  console.log(socket.id);
 
-    socket.on("firstUserInfo", (data) => {
-        socket.broadcast.emit('secondUserInfo', data);
+    socket.on("localUserInfo", (data) => {
+        socket.broadcast.emit('remoteUserInfo', data);
         console.log(`Second User Info ${data}` );
     });
 

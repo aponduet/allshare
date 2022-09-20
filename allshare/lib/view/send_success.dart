@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class FileSaved extends StatelessWidget {
-  const FileSaved({Key? key}) : super(key: key);
+class SendSuccessIndicator extends StatelessWidget {
+  const SendSuccessIndicator({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -14,7 +14,7 @@ class FileSaved extends StatelessWidget {
           borderRadius: const BorderRadius.all(Radius.circular(30))),
       child: const Center(
         child: Text(
-          "File Saved Successfully",
+          "File Transfer Successful",
           style: TextStyle(
               color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
         ),

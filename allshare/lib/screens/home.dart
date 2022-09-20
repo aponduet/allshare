@@ -1,23 +1,17 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:allshare/model/file_info.dart';
-import 'package:allshare/view/saving_indicator.dart';
-import 'package:allshare/view/success_alert.dart';
-import 'package:file_saver/file_saver.dart';
-import 'package:flutter/foundation.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:sdp_transform/sdp_transform.dart';
+import 'package:allshare/controller/resetter.dart';
+import 'package:allshare/controller/select_file.dart';
+import 'package:allshare/controller/sender.dart';
+import 'package:allshare/controller/websocket.dart';
+import 'package:allshare/data/app_states.dart';
 import 'package:allshare/model/profileData.dart';
+import 'package:allshare/view/receive_progress.dart';
+import 'package:allshare/view/save_success.dart';
+import 'package:allshare/view/send_progress.dart';
+import 'package:allshare/view/send_success.dart';
 import 'package:allshare/view/users.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:file_picker/file_picker.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-
-import '../view/saving_progress.dart';
+import '../controller/button_click.dart';
+import '../view/saving.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
@@ -27,865 +21,43 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  Websocket? socketConnection;
+  late Future<String?> webRTCconnectionStates;
+  bool isSender = false;
+
   final TextEditingController textInputController = TextEditingController();
-  late IO.Socket socket;
-  ProfileData? firstUser;
-  ProfileData? secondUser;
-  bool isConnectedSender = false;
-  bool isConnectedReceiver = false;
-  bool isFirstUserInfoSet = false;
-  RTCPeerConnection? localConnection;
-  RTCPeerConnection? remoteConnection;
-  String? localstate = "Connect";
-  String? remotestate = "Connect";
-  RTCDataChannel? sendChannel;
-  RTCDataChannel? receiveChannel;
-  RTCDataChannelInit? _dataChannelDict;
-  List<Uint8List>? receivedChunks = [];
-  double sendprogress = 0;
-  double receiveprogress = 0;
-  List<Uint8List> chunks = [];
-  int? totalChunks;
-  File? file;
-  Uint8List? fileInBytes;
-  bool showSendProgressBar = false;
-  bool showReceiveProgressBar = false;
-  int currentChunkId = 0;
-  PlatformFile? selectedfile;
-  bool isSendSuccess = false;
-  bool isSavedFile = false;
-  bool isSaving = false;
+  final Websocket socketInstance = Websocket(); //socket Instance
+  final FileSelector fileSelectorInstance =
+      FileSelector(); //file Selector class Instance
+  final LocalSender localSenderInstance =
+      LocalSender(); // LocalSender class Instance
+  final RemoteSender remoteSenderInstance =
+      RemoteSender(); // RemoteSender class Instance
+  final AppStates appStatesInstance = AppStates(); // AppStates class Instance;
+  final Resetter reSetterInstance = Resetter(); //Resetter class instance
 
   @override
   dispose() {
     //To stop multiple calling websocket, use the following code.
-    if (socket.disconnected) {
-      socket.disconnect();
-    }
-    closeAllConnection();
+    socketConnection!.disposeSocket();
+    socketInstance.closeAllConnection();
     super.dispose();
   }
-
-  //Clear all previous send data
 
   //Initiate all connection
   @override
   void initState() {
-    initSocket();
+    //socketConnection is an Instance of Active Websocket class
+
+    socketInstance.startSocketConnection(appStatesInstance, reSetterInstance);
+
     super.initState();
-    print("InitState is called");
-  }
-
-  closeAllConnection() {
-    remoteConnection!.close();
-    localConnection!.close();
-    sendChannel!.close();
-    receiveChannel!.close();
-  }
-
-  //Dismiss Success alert
-  dismissAlert() {
-    Timer(const Duration(seconds: 3), (() {
-      setState(() {
-        isSavedFile = false;
-        isSendSuccess = false;
-      });
-      //Reset local state of previous send history
-      localreset();
-    }));
-  }
-
-  // Socket Connection Start
-  void initSocket() {
-    socket = IO.io('http://localhost:3000', <String, dynamic>{
-      "transports": ["websocket"],
-      "autoConnect": false,
-    });
-    socket.connect();
-    socket.on('connect', (_) {
-      print('Connected id : ${socket.id}');
-    });
-
-    socket.onConnect((data) async {
-      print('Socket Server Successfully connected');
-    });
-
-    socket.on("userDisconnected", (data) {
-      setState(() {
-        isConnectedReceiver = false;
-      });
-    });
-
-    //receive Second User Information from Server
-    socket.on('secondUserInfo', (data) {
-      Map<String, dynamic> json = jsonDecode(data);
-      ProfileData secondUserData = ProfileData.fromJson(json);
-      setState(() {
-        secondUser = secondUserData;
-        isConnectedReceiver = true;
-      });
-      if (!isFirstUserInfoSet) {
-        if (socket.connected) {
-          ProfileData userInfo = ProfileData(
-            name: "Sohel Rana",
-            id: socket.id,
-            status: socket.connected,
-          );
-
-          setState(() {
-            firstUser = userInfo;
-            isConnectedSender = true;
-            isFirstUserInfoSet = true;
-          });
-          socket.emit("firstUserInfo", jsonEncode(userInfo));
-        }
-      }
-    });
-
-    //Answer received from Second client which is set as remote description
-    socket.on("receiveAnswer", (data) async {
-      print("Answer received: $data");
-      String sdp = write(data["session"], null);
-      print('Sring SDP is : $sdp');
-
-      RTCSessionDescription description = RTCSessionDescription(sdp, 'answer');
-
-      await localConnection!.setRemoteDescription(description);
-    });
-
-    //Remote area
-
-    //Offer received from First client
-    socket.on("receiveOffer", (data) async {
-      print("Offer received $data");
-
-      remoteConnection =
-          await createPeerConnection(configuration, offerSdpConstraints);
-      String sdp = write(data["session"], null);
-
-      RTCSessionDescription description = RTCSessionDescription(sdp, 'offer');
-
-      await remoteConnection!.setRemoteDescription(description);
-
-      RTCSessionDescription description2 = await remoteConnection!
-          .createAnswer({
-        'offerToReceiveAudio': 1
-      }); // {'offerToReceiveVideo': 1 for video call
-
-      print("Remote Session Description : ${description2.sdp}");
-
-      var session = parse(description2.sdp.toString());
-
-      await remoteConnection!.setLocalDescription(description2);
-
-      socket.emit("createAnswer", {"session": session});
-
-      remoteConnection!.onConnectionState = (state) {
-        print("Remote Connection State is : $state");
-      };
-
-      //ICE Candidate
-      remoteConnection!.onIceCandidate = (e) {
-        print("On-ICE Candidate is Finding");
-        //Transmitting candidate data from answerer to caller
-        if (e.candidate != null) {
-          socket.emit("sendCandidateToLocal", {
-            "candidate": {
-              'candidate': e.candidate.toString(),
-              'sdpMid': e.sdpMid.toString(),
-              'sdpMlineIndex': e.sdpMLineIndex,
-            },
-          });
-        }
-      };
-      remoteConnection!.onIceConnectionState = (e) {
-        print(e);
-      };
-
-      // Checking Connection State
-
-      remoteConnection!.onConnectionState = (state) async {
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-            state ==
-                RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-          setState(() {
-            remotestate = "Disconnected";
-          });
-        }
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-          setState(() {
-            remotestate = "Connection Closed";
-          });
-        }
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-          setState(() {
-            remotestate = "Connected";
-          });
-        }
-        if (state == RTCPeerConnectionState.RTCPeerConnectionStateNew ||
-            state == RTCPeerConnectionState.RTCPeerConnectionStateConnecting) {
-          setState(() {
-            remotestate = "Connecting..";
-          });
-        }
-      };
-
-      // Remote Data channel
-      remoteConnection!.onDataChannel = (channel) {
-        receiveChannel = channel;
-
-        receiveChannel!.onMessage = (message) async {
-          setState(() {
-            //Hide Send Progress Indicator
-            showSendProgressBar = false;
-            isSendSuccess = false;
-          });
-          if (message.isBinary) {
-            receivedChunks!.add(message.binary);
-            // Update progress bar value
-            double percent = (receivedChunks!.length) / totalChunks!;
-
-            setState(() {
-              receiveprogress = percent;
-              //Show Received Progress Indicator
-              showReceiveProgressBar = true;
-            });
-
-            //print("Chunk Received Successfully!! ${message.binary}");
-          }
-          if (!message.isBinary) {
-            FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
-            if (!fileheaders.isFileInfo) {
-              //used to show text on chatbox
-              print(fileheaders.textmessage);
-            }
-
-            if (fileheaders.isFirstChunk) {
-              totalChunks = fileheaders.totalChunk;
-            }
-            //save file to storage or download in web
-            if (fileheaders.isLastChunk) {
-              setState(() {
-                receiveprogress = 1;
-                showReceiveProgressBar = false;
-                isSaving = true;
-              });
-
-              saveFile(message.text);
-            }
-          }
-        };
-      };
-    });
-
-    //Receiving Local Candidates
-    //THIS COMPELETES THE CONNECTION PROCEDURE
-    socket.on("receiveLocalCandidate", (data) async {
-      print("Local Candidate received $data");
-      dynamic candidate = RTCIceCandidate(data['candidate']['candidate'],
-          data['candidate']['sdpMid'], data['candidate']['sdpMlineIndex']);
-      await remoteConnection!.addCandidate(candidate);
-    });
-    //Receiving Remote Candidates
-    //THIS COMPELETES THE CONNECTION PROCEDURE
-    socket.on("receiveRemoteCandidate", (data) async {
-      print("Remote Candidate received $data");
-      dynamic candidate = RTCIceCandidate(data['candidate']['candidate'],
-          data['candidate']['sdpMid'], data['candidate']['sdpMlineIndex']);
-      await localConnection!.addCandidate(candidate);
-    });
-  }
-
-  //Search Receiver
-  refreshUsers() {
-    if (socket.connected) {
-      ProfileData userInfo = ProfileData(
-        name: "Sohel Rana",
-        id: socket.id,
-        status: socket.connected,
-      );
-
-      setState(() {
-        firstUser = userInfo;
-        isConnectedSender = true;
-        isFirstUserInfoSet = true;
-      });
-      socket.emit("firstUserInfo", jsonEncode(userInfo));
-    }
-  }
-
-  //****** WEBRTC Connection Start Here ******** */
-  bool offer = false;
-  final Map<String, dynamic> configuration = {
-    "iceServers": [
-      {"url": "stun:stun.l.google.com:19302"},
-      {
-        "url": 'turn:192.158.29.39:3478?transport=udp',
-        "credential": 'JZEOEt2V3Qb0y27GRntt2u2PAYA=',
-        "username": '28224511:1379330808'
-      }
-    ]
-  };
-
-  final Map<String, dynamic> offerSdpConstraints = {
-    "mandatory": {
-      "OfferToReceiveAudio": true,
-      "OfferToReceiveVideo": true, //for video call
-    },
-    "optional": [],
-  };
-
-  // Local area
-  Future<void> createConnection() async {
-    localConnection =
-        await createPeerConnection(configuration, offerSdpConstraints);
-
-    // local data channel
-    _dataChannelDict = RTCDataChannelInit();
-    _dataChannelDict!.id = 1;
-    _dataChannelDict!.ordered = true;
-    _dataChannelDict!.maxRetransmitTime = -1;
-    _dataChannelDict!.maxRetransmits = -1;
-    _dataChannelDict!.protocol = 'sctp';
-    _dataChannelDict!.negotiated = false;
-    sendChannel = await localConnection!
-        .createDataChannel("sendChannel", _dataChannelDict!);
-    sendChannel!.onMessage = (message) {
-      setState(() {
-        //Hide Send Progress Indicator
-        showSendProgressBar = false;
-        isSendSuccess = false;
-      });
-      if (message.isBinary) {
-        receivedChunks!.add(message.binary);
-        // Update progress bar value
-        double percent = (receivedChunks!.length) / totalChunks!;
-
-        setState(() {
-          receiveprogress = percent;
-          //Show Received Progress Indicator
-          showReceiveProgressBar = true;
-        });
-
-        //print("Chunk Received Successfully!! ${message.binary}");
-      }
-      if (!message.isBinary) {
-        FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message.text));
-        if (!fileheaders.isFileInfo) {
-          //used to show text on chatbox
-          print(fileheaders.textmessage);
-        }
-
-        if (fileheaders.isFirstChunk) {
-          totalChunks = fileheaders.totalChunk;
-        }
-        //save file to storage or download in web
-        if (fileheaders.isLastChunk) {
-          setState(() {
-            receiveprogress = 1;
-            isSaving = true;
-            showReceiveProgressBar = false;
-          });
-          saveFile(message.text);
-        }
-      }
-    };
-
-    //Create Offer
-    RTCSessionDescription description =
-        await localConnection!.createOffer({'offerToReceiveAudio': 1});
-    print("Local Session Description ${description.sdp}");
-    localConnection!.setLocalDescription(description);
-    var session = parse(description.sdp.toString());
-    socket.emit("createOffer", {"session": session});
-    setState(() {
-      offer = true;
-    });
-
-    //Sending Caller Ice Candidate
-    localConnection!.onIceCandidate = (e) {
-      print("On-ICE Candidate is Finding");
-      //Transmitting candidate data from answerer to caller
-      if (e.candidate != null) {
-        socket.emit("sendCandidateToRemote", {
-          "candidate": {
-            'candidate': e.candidate.toString(),
-            'sdpMid': e.sdpMid.toString(),
-            'sdpMlineIndex': e.sdpMLineIndex,
-          },
-        });
-      }
-    };
-
-    //Check WebRTC Connection
-    localConnection!.onConnectionState = (state) {
-      print("Local Connection State is : $state");
-    };
-
-    localConnection!.onIceConnectionState = (e) {
-      print("Ice Connection State is : $e");
-    };
-
-    // Checking Connection State
-
-    localConnection!.onConnectionState = (state) async {
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        setState(() {
-          localstate = "Disconnected";
-        });
-      }
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-        setState(() {
-          localstate = "Connection Closed";
-        });
-      }
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        setState(() {
-          localstate = "Connected";
-        });
-      }
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateNew ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateConnecting) {
-        setState(() {
-          localstate = "Connecting..";
-        });
-      }
-    };
-  }
-
-  //Button Text Depending on WEBSocket Connection State
-  Widget buttonText(bool x, bool y) {
-    if (x == y) {
-      return const Text("Users Active");
-    } else {
-      return const Text("Refresh");
-    }
-  }
-
-  //Update Maximum Size
-  // int maximumMessageSize = 16000;
-  // Future updateMaximumMessageSize() async {
-  //   RTCSessionDescription? local = await localConnection!.getLocalDescription();
-  //   RTCSessionDescription? remote =
-  //       await remoteConnection!.getRemoteDescription();
-
-  //   int localMaximumSize = parseMaximumSize(local!);
-  //   int remoteMaximumSize = parseMaximumSize(remote);
-  //   int messageSize = min(localMaximumSize, remoteMaximumSize);
-
-  //   print(
-  //       'SENDER: Updated max message size: $messageSize Local: $localMaximumSize Remote: $remoteMaximumSize ');
-  //   maximumMessageSize = messageSize;
-  // }
-
-  // //Set Max Cunk Size
-  // int parseMaximumSize(RTCSessionDescription? description) {
-  //   var remoteLines = description?.sdp?.split('\r\n') ?? [];
-
-  //   int remoteMaximumSize = 0;
-  //   for (final line in remoteLines) {
-  //     if (line.startsWith('a=max-message-size:')) {
-  //       var string = line.substring('a=max-message-size:'.length);
-  //       remoteMaximumSize = int.parse(string);
-  //       break;
-  //     }
-  //   }
-
-  //   if (remoteMaximumSize == 0) {
-  //     print('SENDER: No max message size session description');
-  //   }
-
-  //   // 16 kb should be supported on all clients so we can use it
-  //   // even if no max message is set
-  //   return max(remoteMaximumSize, maximumMessageSize);
-  // }
-
-  //Send Message
-  sendtext() {
-    //Send message to Remote
-    //Sending total chunk to Receiver
-    FileInfo messageHistory = FileInfo(
-        textmessage: textInputController.text,
-        isLastChunk: false,
-        isFirstChunk: false,
-        isFileInfo: false);
-    String info = jsonEncode(messageHistory);
-    RTCDataChannelMessage messageText = RTCDataChannelMessage(info);
-    offer ? sendChannel!.send(messageText) : receiveChannel!.send(messageText);
-    print(messageHistory.textmessage);
-
-    // String messageText = textInputController.text;
-    // RTCDataChannelMessage textMessage = RTCDataChannelMessage(messageText);
-    // offer ? sendChannel!.send(textMessage) : receiveChannel!.send(textMessage);
-
-    textInputController.text = "";
-  }
-
-  //Send Message
-
-  sendFile() async {
-    //Large File Sending New System
-    //Send Files from Local to Remote
-    sendFilesLocalToRemote(int currentChunkIndex) {
-      if (sendChannel!.bufferedAmount == 0 ||
-          sendChannel!.bufferedAmount == null) {
-        print("Send Bucket is Empty!");
-        if (currentChunkIndex == 0) {
-          print("First condition called");
-          //Sending total chunk to Receiver
-          FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
-              extn: selectedfile!.extension,
-              totalChunk: chunks.length,
-              isLastChunk: false,
-              isFirstChunk: true,
-              isFileInfo: true);
-
-          String info = jsonEncode(fileHistory);
-          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-          print("This is First Message with Total Chunk");
-        }
-
-        if (currentChunkIndex < chunks.length) {
-          print("Second condition called");
-          RTCDataChannelMessage binaryMessage =
-              RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
-          //print(binaryMessage);
-
-          offer
-              ? sendChannel!.send(binaryMessage)
-              : receiveChannel!.send(binaryMessage);
-
-          double percent = currentChunkIndex / (chunks.length);
-          setState(() {
-            sendprogress = percent;
-          });
-        }
-
-        if (currentChunkIndex == chunks.length) {
-          print("Third condition called");
-          FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
-              extn: selectedfile!.extension,
-              totalChunk: chunks.length,
-              isLastChunk: true,
-              isFirstChunk: false,
-              isFileInfo: true);
-          String info = jsonEncode(fileHistory);
-          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-
-          setState(() {
-            sendprogress = 1.0;
-            showSendProgressBar = !showSendProgressBar;
-            isSendSuccess = !isSendSuccess;
-          });
-
-          //Dismiss success alert
-          dismissAlert();
-
-          print("sendchanell buffered abount : ${sendChannel!.bufferedAmount}");
-          print("Total chunk : ${chunks.length}");
-          print("Last Chunk has been sent");
-          //x = 0;
-        }
-        if (currentChunkIndex < chunks.length) {
-          currentChunkId = currentChunkIndex + 1;
-          sendFilesLocalToRemote(currentChunkId);
-        }
-      } else {
-        Timer(const Duration(milliseconds: 100), () {
-          print("Waiting untill the Buffered amount is zero or null");
-          sendFilesLocalToRemote(currentChunkId);
-        });
-      }
-    }
-
-    //Send Files From Remote to Local
-    sendFilesRemoteToLocal(int currentChunkIndex) {
-      if (receiveChannel!.bufferedAmount == 0 ||
-          receiveChannel!.bufferedAmount == null) {
-        print("Send Bucket is Empty!");
-        if (currentChunkIndex == 0) {
-          //Sending total chunk to Receiver
-          FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
-              extn: selectedfile!.extension,
-              totalChunk: chunks.length,
-              isLastChunk: false,
-              isFirstChunk: true,
-              isFileInfo: true);
-
-          String info = jsonEncode(fileHistory);
-          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-          print("This is First Message with Total Chunk");
-        }
-
-        if (currentChunkIndex < chunks.length) {
-          RTCDataChannelMessage binaryMessage =
-              RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
-          //print(binaryMessage);
-
-          offer
-              ? sendChannel!.send(binaryMessage)
-              : receiveChannel!.send(binaryMessage);
-
-          double percent = currentChunkIndex / (chunks.length);
-          setState(() {
-            sendprogress = percent;
-          });
-        }
-
-        if (currentChunkIndex == chunks.length) {
-          FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
-              extn: selectedfile!.extension,
-              totalChunk: chunks.length,
-              isLastChunk: true,
-              isFirstChunk: false,
-              isFileInfo: true);
-          String info = jsonEncode(fileHistory);
-          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-          setState(() {
-            sendprogress = 1.0;
-            showSendProgressBar = !showSendProgressBar;
-            isSendSuccess = !isSendSuccess;
-          });
-
-          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-
-          //Dismiss success alert
-          dismissAlert();
-
-          print("Total chunk : ${chunks.length}");
-          print("Last Chunk has been sent");
-        }
-        if (currentChunkIndex < chunks.length) {
-          currentChunkId = currentChunkIndex + 1;
-          sendFilesRemoteToLocal(currentChunkId);
-        }
-      } else {
-        Timer(const Duration(milliseconds: 100), () {
-          print("Waiting untill the Buffered amount is zero or null");
-          sendFilesRemoteToLocal(currentChunkId);
-        });
-      }
-    }
-
-    /* sendFilesLocalToRemote(int currentChunkIndex) {
-      if (sendChannel!.bufferedAmount! >= 1676809) {
-        print(
-            "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
-        Future.delayed(const Duration(seconds: 3), () {
-          print("Checking Buffered amount...");
-          sendFilesLocalToRemote(currentChunkIndex);
-        });
-
-        //sleep(const Duration(seconds: 1));
-      } else {
-        if (currentChunkIndex == 0) {
-          //Sending total chunk to Receiver
-          FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
-              extn: selectedfile!.extension,
-              totalChunk: chunks.length,
-              isLastChunk: false);
-          String info = jsonEncode(fileHistory);
-          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-          print("This is First Message with Total Chunk");
-        }
-
-        if (currentChunkIndex < chunks.length) {
-          RTCDataChannelMessage binaryMessage =
-              RTCDataChannelMessage.fromBinary(chunks[currentChunkIndex]);
-          //print(binaryMessage);
-
-          offer
-              ? sendChannel!.send(binaryMessage)
-              : receiveChannel!.send(binaryMessage);
-
-          double percent = currentChunkIndex / (chunks.length);
-          setState(() {
-            sendprogress = percent;
-          });
-        }
-
-        if (currentChunkIndex == chunks.length) {
-          FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
-              extn: selectedfile!.extension,
-              totalChunk: chunks.length,
-              isLastChunk: true);
-          String info = jsonEncode(fileHistory);
-          RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-          setState(() {
-            sendprogress = 1.0;
-          });
-
-          offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-          print("Total chunk : ${chunks.length}");
-          print("Last Chunk has been sent");
-        }
-      }
-    }      */
-
-    //Large File Sending System codes
-
-    /* 
-
-    for (var i = 0; i <= chunks.length; i++) {
-      //Large File Sending System codes
-      //bool sendFilesLocalToRemoteChunk = true;
-
-      if (sendChannel!.bufferedAmount! >= 1676809) {
-        print(
-            "Send Bucket is full, Threshold: ${sendChannel!.bufferedAmountLowThreshold}, & Buffered Amount: ${sendChannel!.bufferedAmount}");
-        Future.delayed(const Duration(seconds: 3));
-
-        //sleep(const Duration(seconds: 1));
-      }
-
-      if (i == 0) {
-        //Sending total chunk to Receiver
-        FileInfo fileHistory = FileInfo(
-            name: selectedfile!.name,
-            extn: selectedfile!.extension,
-            totalChunk: chunks.length,
-            isLastChunk: false);
-        String info = jsonEncode(fileHistory);
-        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-        print("This is First Message with Total Chunk");
-      }
-      if (i < chunks.length) {
-        RTCDataChannelMessage binaryMessage =
-            RTCDataChannelMessage.fromBinary(chunks[i]);
-        //print(binaryMessage);
-
-        offer
-            ? sendChannel!.send(binaryMessage)
-            : receiveChannel!.send(binaryMessage);
-
-        double percent = i / (chunks.length);
-        setState(() {
-          sendprogress = percent;
-        });
-      }
-      if (i == chunks.length) {
-        FileInfo fileHistory = FileInfo(
-            name: selectedfile!.name,
-            extn: selectedfile!.extension,
-            totalChunk: chunks.length,
-            isLastChunk: true);
-        String info = jsonEncode(fileHistory);
-        RTCDataChannelMessage fileData = RTCDataChannelMessage(info);
-        setState(() {
-          sendprogress = 1.0;
-        });
-
-        offer ? sendChannel!.send(fileData) : receiveChannel!.send(fileData);
-        print("Total chunk : ${chunks.length}");
-        print("Last Chunk has been sent");
-      }
-    }
-
-    */
-
-    // Showing Progress indicator
-    offer
-        ? sendFilesLocalToRemote(currentChunkId)
-        : sendFilesRemoteToLocal(currentChunkId);
-    setState(() {
-      showSendProgressBar = true;
-    });
-  }
-
-  //Save Files in Devices
-
-  saveFile(String message) async {
-    if (!kIsWeb) {
-      if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
-        bool status = await Permission.storage.isGranted;
-        if (!status) await Permission.storage.request();
-      }
-    }
-
-    FileInfo fileheaders = FileInfo.fromJson(jsonDecode(message));
-    String? filename = fileheaders.name ?? "";
-    String? extension = fileheaders.extn ?? "";
-    //Convert List<Uint8List> to List<int>  //https://stackoverflow.com/questions/62295468/listuint8list-to-listint-in-dart
-    List<int> readyChunks = [
-      for (var sublist in receivedChunks!) ...sublist,
-    ];
-
-    Uint8List finalChunks = Uint8List.fromList(readyChunks);
-    String savingstatus = await FileSaver.instance
-        .saveFile(filename, finalChunks, extension, mimeType: MimeType.OTHER);
-
-    if (savingstatus != "") {
-      setState(() {
-        isSavedFile = true;
-        isSaving = false;
-      });
-    }
-
-    //Dismiss success alert
-    dismissAlert();
-
-    //Set ReceivedChunk List empty after saving file.
-    print(savingstatus);
-    print("Received chunk Length : ${receivedChunks!.length}");
-    print("Received chunk is clearing");
-    receivedChunks!.clear();
-    print("Received chunk Length : ${receivedChunks!.length}");
-  }
-
-//Reset previous sending history
-  void localreset() {
-    currentChunkId = 0; //very important
-    chunks = [];
-    selectedfile = null;
-    isSaving = false;
-    isSavedFile = false;
-    isSendSuccess = false;
-  }
-
-//Select Files to send
-  selectFile() async {
-    localreset(); //First Clear the previous history of chunks
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      withData:
-          true, //If null is returned in desktop , follow https://github.com/miguelpruivo/flutter_file_picker/issues/817
-    );
-
-    if (result != null) {
-      PlatformFile file = result.files.first;
-      setState(() {
-        isSendSuccess = false;
-        selectedfile = file;
-      });
-
-      //Make small chunk of message
-      fileInBytes = selectedfile!.bytes;
-      int chunkSize = 262144;
-      for (var i = 0; i < fileInBytes!.length; i += chunkSize) {
-        chunks.add(fileInBytes!.sublist(
-            i,
-            i + chunkSize > fileInBytes!.length
-                ? fileInBytes!.length
-                : i + chunkSize));
-      }
-    } else {
-      print("No Files Selected!!");
-    }
+    print("InitState is called, sOCKET iD : ${socketInstance.socket!.id}");
   }
 
   @override
   Widget build(BuildContext context) {
+    print("homepage build methode is called!!");
     return Scaffold(
       // appBar: AppBar(
       //   title: Text(widget.title),
@@ -912,21 +84,30 @@ class _MyHomePageState extends State<MyHomePage> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
-                      decoration: BoxDecoration(
-                          border: Border.all(width: 1, color: Colors.grey),
-                          borderRadius:
-                              const BorderRadius.all(Radius.circular(8))),
-                      width: 350,
-                      height: 150,
-                      child: isConnectedSender
-                          ? Users(
-                              name: "${firstUser!.name}",
-                              id: "${firstUser!.id}",
-                              status: firstUser!.status!)
-                          : const Center(
-                              child: Text("Sender Offline"),
-                            ),
-                    ),
+                        decoration: BoxDecoration(
+                            border: Border.all(width: 1, color: Colors.grey),
+                            borderRadius:
+                                const BorderRadius.all(Radius.circular(8))),
+                        width: 350,
+                        height: 150,
+                        //child: const Text("Sender Offline"),
+                        child: ValueListenableBuilder<bool>(
+                            valueListenable: appStatesInstance.localUserStatus,
+                            builder: (context, value, child) {
+                              return value
+                                  ? ValueListenableBuilder<ProfileData>(
+                                      valueListenable:
+                                          appStatesInstance.localUserInfo,
+                                      builder: (context, value, child) {
+                                        return Users(
+                                            name: "${value.name}",
+                                            id: "${value.id}",
+                                            status: value.status!);
+                                      })
+                                  : const Center(
+                                      child: Text("Sender Offline"),
+                                    );
+                            })),
                     const SizedBox(
                       width: 100,
                       height: 100,
@@ -943,25 +124,39 @@ class _MyHomePageState extends State<MyHomePage> {
                               const BorderRadius.all(Radius.circular(8))),
                       width: 350,
                       height: 150,
-                      child: isConnectedReceiver
-                          ? Users(
-                              name: "${secondUser!.name}",
-                              id: "${secondUser!.id}",
-                              status: secondUser!.status!)
-                          : const Center(
-                              child: Text("Receiver Offline"),
-                            ),
+                      //child: const Text("Receiver Offline"),
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: appStatesInstance.remoteUserStatus,
+                        builder: (context, value, child) {
+                          return value
+                              ? ValueListenableBuilder<ProfileData>(
+                                  valueListenable:
+                                      appStatesInstance.remoteUserInfo,
+                                  builder: (context, value, child) {
+                                    return Users(
+                                        name: "${value.name}",
+                                        id: "${value.id}",
+                                        status: value.status!);
+                                  },
+                                )
+                              : const Center(
+                                  child: Text("Receiver Offline"),
+                                );
+                        },
+                      ),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(
                 height: 20,
               ),
               GestureDetector(
                 onTap: () {
-                  refreshUsers();
-                  print('Clicked Button');
+                  socketInstance.updateUsers(appStatesInstance);
+
+                  print('Refresh Button is Clicked!!');
                 },
                 child: Container(
                   decoration: BoxDecoration(
@@ -969,19 +164,40 @@ class _MyHomePageState extends State<MyHomePage> {
                       borderRadius: const BorderRadius.all(Radius.circular(5))),
                   width: 300,
                   height: 60,
-                  child: Center(
-                    //child: Text("Refresh"),
-                    child: buttonText(isConnectedReceiver, isConnectedSender),
-                  ),
+                  child: ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.localUserStatus,
+                      builder: (_, localUserStatus, __) {
+                        return localUserStatus
+                            ? ValueListenableBuilder<bool>(
+                                valueListenable:
+                                    appStatesInstance.remoteUserStatus,
+                                builder: (_, remoteUserStatus, __) {
+                                  return remoteUserStatus
+                                      ? const Center(
+                                          child: Text(
+                                            "Users Active",
+                                            style: TextStyle(
+                                                color: Colors.green,
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                        )
+                                      : const Center(
+                                          child: Text("Refresh Users"));
+                                })
+                            : const Center(child: Text("Refresh Users"));
+                      }),
                 ),
               ),
               const SizedBox(
                 height: 30,
               ),
+              //Create Connection
               GestureDetector(
                 onTap: () {
-                  createConnection();
-                  print('Clicked Refreshed Button');
+                  socketInstance.localInstance.createLocalConnection(
+                      socketInstance.socket!,
+                      appStatesInstance,
+                      reSetterInstance);
                 },
                 child: Container(
                   decoration: BoxDecoration(
@@ -990,30 +206,57 @@ class _MyHomePageState extends State<MyHomePage> {
                   width: 300,
                   height: 60,
                   child: Center(
-                    child: offer ? Text("$localstate") : Text("$remotestate"),
-                    //child: connectBtnText(),
-                  ),
+                      //Showing webrtc connection status
+                      child: ValueListenableBuilder<bool>(
+                          valueListenable: appStatesInstance.isSender,
+                          builder: (context, value, child) {
+                            return value
+                                ? ValueListenableBuilder<String>(
+                                    valueListenable:
+                                        appStatesInstance.localState,
+                                    builder: (context, value, child) {
+                                      return Text(value);
+                                    })
+                                : ValueListenableBuilder<String>(
+                                    valueListenable:
+                                        appStatesInstance.remoteState,
+                                    builder: (context, value, child) {
+                                      return Text(value);
+                                    });
+                          })
+                      //child: connectBtnText(),
+                      ),
                 ),
               ),
               const SizedBox(
                 height: 30,
               ),
-              if (selectedfile != null)
-                Text(
-                  selectedfile!.name,
-                  style: const TextStyle(color: Colors.red),
-                ),
+              //Show Selected File name
+              ValueListenableBuilder<bool>(
+                  valueListenable: appStatesInstance.isFileSelected,
+                  builder: (_, isFileSelected, __) {
+                    return isFileSelected
+                        ? Text(appStatesInstance.selectedFileName.value)
+                        : const SizedBox(
+                            width: 0,
+                            height: 0,
+                          );
+                  }),
+
               const SizedBox(
                 height: 10,
               ),
 
-              // File attach area
+              // Select file button
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
-                      onPressed: selectFile,
+                      //onPressed: () {},
+                      onPressed: (() {
+                        fileSelectorInstance.selectFile(appStatesInstance);
+                      }),
                       icon: const Icon(Icons.attach_file)),
                   const SizedBox(
                     width: 7,
@@ -1030,110 +273,127 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(
                     width: 10,
                   ),
-                  chunks.isEmpty
-                      ? ElevatedButton(
-                          onPressed: sendtext, child: const Text('Send Text'))
-                      : ElevatedButton(
-                          onPressed: sendFile, child: const Text('Send File')),
+                  ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.isSender,
+                      builder: (context, value, child) {
+                        return value
+                            ? ValueListenableBuilder<bool>(
+                                valueListenable:
+                                    appStatesInstance.isFileSelected,
+                                builder: (context, isFileSelected, child) {
+                                  return isFileSelected
+                                      ? ElevatedButton(
+                                          onPressed: () {
+                                            localSenderInstance.sendFile(
+                                                socketInstance.localInstance
+                                                    .localDataChannel,
+                                                fileSelectorInstance
+                                                    .selectedfile,
+                                                fileSelectorInstance.chunks,
+                                                appStatesInstance,
+                                                reSetterInstance);
+                                          },
+                                          child: const Text('Send File'))
+                                      : ElevatedButton(
+                                          onPressed: () {
+                                            localSenderInstance.sendtext(
+                                              socketInstance.localInstance
+                                                  .localDataChannel,
+                                              textInputController,
+                                            );
+                                          },
+                                          child: const Text('Send Text'));
+                                })
+                            : ValueListenableBuilder<bool>(
+                                valueListenable:
+                                    appStatesInstance.isFileSelected,
+                                builder: (context, isFileSelected, child) {
+                                  return isFileSelected
+                                      ? ElevatedButton(
+                                          onPressed: () {
+                                            remoteSenderInstance.sendFile(
+                                                socketInstance.remoteInstance
+                                                    .remoteDataChannel,
+                                                fileSelectorInstance
+                                                    .selectedfile,
+                                                fileSelectorInstance.chunks,
+                                                appStatesInstance,
+                                                reSetterInstance);
+                                          },
+                                          child: const Text('Send File'))
+                                      : ElevatedButton(
+                                          onPressed: () {
+                                            remoteSenderInstance.sendtext(
+                                              socketInstance.remoteInstance
+                                                  .remoteDataChannel,
+                                              textInputController,
+                                            );
+                                          },
+                                          child: const Text('Send Text'));
+                                });
+                      }),
                 ],
               ),
               const SizedBox(
                 height: 30,
               ),
-              //Linear Progress Indicator
-              if (showSendProgressBar)
-                LinearPercentIndicator(
-                  width: 800.0,
-                  lineHeight: 20.0,
-                  percent: sendprogress,
-                  backgroundColor: Colors.grey,
-                  progressColor: Colors.blue,
-                  //animation: true,
-                  //animationDuration: 1000,
-                  barRadius: const Radius.circular(10),
-                  center: Text(
-                    "${(sendprogress * 100).round()}%",
-                    style: const TextStyle(
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black),
-                  ),
-                ),
 
-              if (isSendSuccess) const SuccessAlert(),
-              if (isSaving) const FileSavingIndicator(),
+              //Send Progress Indicator
+              ValueListenableBuilder<bool>(
+                  valueListenable: appStatesInstance.isShowSendProgress,
+                  builder: (context, isShowSendProgress, child) {
+                    return isShowSendProgress
+                        ? SendProgressIndicator(appStates: appStatesInstance)
+                        : const SizedBox(
+                            width: 0,
+                            height: 0,
+                          );
+                  }),
+              //Receive Progress Indicator
+              ValueListenableBuilder<bool>(
+                  valueListenable: appStatesInstance.isShowReceiveProgress,
+                  builder: (context, isShowReceiveProgress, child) {
+                    return isShowReceiveProgress
+                        ? ReceiveProgressIndicator(appStates: appStatesInstance)
+                        : const SizedBox(
+                            width: 0,
+                            height: 0,
+                          );
+                  }),
 
-              //Progress Indicator
-
-              if (showReceiveProgressBar)
-                LinearPercentIndicator(
-                  //animation: true,
-                  //animationDuration: 1000,
-                  width: 800.0,
-                  lineHeight: 20.0,
-                  percent: receiveprogress,
-                  barRadius: const Radius.circular(10),
-                  progressColor: Colors.blue[400],
-                  backgroundColor: Colors.grey[300],
-                  center: Text(
-                    "${(receiveprogress * 100).round()}%",
-                    style: const TextStyle(
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black),
-                  ),
-                ),
-              //show saving Indicator
-
-              if (isSavedFile) const FileSaved(),
-
-              // FutureBuilder(
-              //     future: savingStatus,
-              //     builder: ((context, snapshot) {
-              //       if (snapshot.hasData) {
-              //         return const FileSaved();
-              //       } else if (snapshot.hasError) {
-              //         return const Text("Failed to save file!!");
-              //       } else {
-              //         return const FileSavingIndicator();
-              //       }
-              //     })),
-
-              //Received Files Area
-
-              // Container(
-              //   height: 70,
-              //   padding: const EdgeInsets.all(5),
-              //   decoration: BoxDecoration(
-              //       border: Border.all(width: 1, color: Colors.grey),
-              //       borderRadius: const BorderRadius.all(Radius.circular(3))),
-              //   child: Row(
-              //     mainAxisAlignment: MainAxisAlignment.start,
-              //     children: [
-              //       Container(
-              //         width: 50,
-              //         height: 60,
-              //         decoration: BoxDecoration(
-              //             border: Border.all(width: 1, color: Colors.grey),
-              //             borderRadius:
-              //                 const BorderRadius.all(Radius.circular(5))),
-              //         child: const Center(
-              //           child: Icon(Icons.image),
-              //         ),
-              //       ),
-              //       const SizedBox(
-              //         width: 10,
-              //       ),
-              //       const Expanded(child: Text('Sohelrana.jpg')),
-              //       ElevatedButton(
-              //           onPressed: () {},
-              //           child: const Padding(
-              //             padding: EdgeInsets.all(8.0),
-              //             child: Text('View'),
-              //           ))
-              //     ],
-              //   ),
-              // ),
+              //Show Send Success Indicator
+              ValueListenableBuilder<bool>(
+                  valueListenable: appStatesInstance.isShowSendSuccess,
+                  builder: (context, isShowSendSuccess, child) {
+                    return isShowSendSuccess
+                        ? const SendSuccessIndicator()
+                        : const SizedBox(
+                            width: 0,
+                            height: 0,
+                          );
+                  }),
+              //Show Save Success Indicator
+              ValueListenableBuilder<bool>(
+                  valueListenable: appStatesInstance.isShowSaveSuccess,
+                  builder: (context, isShowSaveSuccess, child) {
+                    return isShowSaveSuccess
+                        ? const SaveSuccessIndicator()
+                        : const SizedBox(
+                            width: 0,
+                            height: 0,
+                          );
+                  }),
+              //Show Saving Indicator
+              ValueListenableBuilder<bool>(
+                  valueListenable: appStatesInstance.isShowSaving,
+                  builder: (context, isShowSaving, child) {
+                    return isShowSaving
+                        ? const FileSavingIndicator()
+                        : const SizedBox(
+                            width: 0,
+                            height: 0,
+                          );
+                  }),
             ],
           ),
         ),

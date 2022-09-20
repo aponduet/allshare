@@ -1,7 +1,7 @@
 class FileInfo {
   String? name;
   String? extn;
-  int? totalChunk;
+  int totalChunk;
   bool isLastChunk;
   bool isFirstChunk;
   bool isFileInfo;
@@ -10,7 +10,7 @@ class FileInfo {
   FileInfo(
       {this.name,
       this.extn,
-      this.totalChunk,
+      required this.totalChunk,
       required this.isLastChunk,
       required this.isFirstChunk,
       required this.isFileInfo,

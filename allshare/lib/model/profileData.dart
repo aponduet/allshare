@@ -1,7 +1,7 @@
 class ProfileData {
   String? name;
   String? id;
-  bool? status;
+  bool? status = false;
   ProfileData({this.name, this.id, this.status});
 
   //Map data to Json
