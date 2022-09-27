@@ -79,7 +79,9 @@ class LocalSender {
         if (currentChunkIndex == chunks.length) {
           print("Third condition called");
           FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
+              //name: selectedfile!.name,
+              name:
+                  '${DateTime.now().millisecondsSinceEpoch}.${selectedfile!.extension}',
               extn: selectedfile.extension,
               totalChunk: chunks.length,
               isLastChunk: true,
@@ -191,7 +193,9 @@ class RemoteSender {
 
         if (currentChunkIndex == chunks.length) {
           FileInfo fileHistory = FileInfo(
-              name: selectedfile!.name,
+              //name: selectedfile!.name,
+              name:
+                  '${DateTime.now().millisecondsSinceEpoch}.${selectedfile!.extension}',
               extn: selectedfile.extension,
               totalChunk: chunks.length,
               isLastChunk: true,

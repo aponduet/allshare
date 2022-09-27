@@ -1,13 +1,8 @@
 import 'dart:convert';
-import 'dart:developer';
-import 'dart:js_util';
-
 import 'package:allshare/controller/resetter.dart';
 import 'package:allshare/controller/webrtc_local_connection.dart';
 import 'package:allshare/controller/webrtc_remote_connection.dart';
-import 'package:allshare/data/app_data.dart';
 import 'package:allshare/data/app_states.dart';
-import 'package:allshare/data/mydata.dart';
 import 'package:allshare/model/profileData.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 

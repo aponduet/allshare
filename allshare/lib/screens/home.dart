@@ -4,7 +4,10 @@ import 'package:allshare/controller/sender.dart';
 import 'package:allshare/controller/websocket.dart';
 import 'package:allshare/data/app_states.dart';
 import 'package:allshare/model/profileData.dart';
+import 'package:allshare/model/received_file.dart';
+import 'package:allshare/view/receive_display/other_file.dart';
 import 'package:allshare/view/receive_progress.dart';
+import 'package:allshare/view/receive_display/item_list.dart';
 import 'package:allshare/view/save_success.dart';
 import 'package:allshare/view/send_progress.dart';
 import 'package:allshare/view/send_success.dart';
@@ -62,341 +65,374 @@ class _MyHomePageState extends State<MyHomePage> {
       // appBar: AppBar(
       //   title: Text(widget.title),
       // ),
-      body: Center(
-        child: Container(
-          // constraints: const BoxConstraints(
-          //     minWidth: 420, maxWidth: 800, minHeight: 500, maxHeight: 600),
-          padding: const EdgeInsets.all(20),
-          width: 850,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            border: Border.all(width: 1, color: Colors.grey),
-            borderRadius: const BorderRadius.all(Radius.circular(10)),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              SizedBox(
-                //width: double.infinity,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                        decoration: BoxDecoration(
-                            border: Border.all(width: 1, color: Colors.grey),
-                            borderRadius:
-                                const BorderRadius.all(Radius.circular(8))),
-                        width: 350,
-                        height: 150,
-                        //child: const Text("Sender Offline"),
-                        child: ValueListenableBuilder<bool>(
-                            valueListenable: appStatesInstance.localUserStatus,
+      body: Row(
+        children: [
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(0, 10, 0, 10),
+              // constraints: const BoxConstraints(
+              //     minWidth: 420, maxWidth: 800, minHeight: 500, maxHeight: 600),
+              padding: const EdgeInsets.all(20),
+              //width: 850,
+              height: double.infinity,
+              decoration: const BoxDecoration(
+                border: Border(right: BorderSide(color: Colors.grey, width: 1)),
+              ),
+              // decoration: BoxDecoration(
+              //   border: Border.all(width: 1, color: Colors.grey),
+              //   borderRadius: const BorderRadius.all(Radius.circular(10)),
+              // ),
+
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  SizedBox(
+                    //width: double.infinity,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                            decoration: BoxDecoration(
+                                border:
+                                    Border.all(width: 1, color: Colors.grey),
+                                borderRadius:
+                                    const BorderRadius.all(Radius.circular(8))),
+                            width: 200,
+                            height: 150,
+                            //child: const Text("Sender Offline"),
+                            child: ValueListenableBuilder<bool>(
+                                valueListenable:
+                                    appStatesInstance.localUserStatus,
+                                builder: (context, value, child) {
+                                  return value
+                                      ? ValueListenableBuilder<ProfileData>(
+                                          valueListenable:
+                                              appStatesInstance.localUserInfo,
+                                          builder: (context, value, child) {
+                                            return Users(
+                                                name: "${value.name}",
+                                                id: "${value.id}",
+                                                status: value.status!);
+                                          })
+                                      : const Center(
+                                          child: Text("Sender Offline"),
+                                        );
+                                })),
+                        const SizedBox(
+                          width: 100,
+                          height: 100,
+                          child: Center(
+                              child: Icon(
+                            Icons.sync_alt,
+                            color: Colors.green,
+                          )),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                              border: Border.all(width: 1, color: Colors.grey),
+                              borderRadius:
+                                  const BorderRadius.all(Radius.circular(8))),
+                          width: 200,
+                          height: 150,
+                          //child: const Text("Receiver Offline"),
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: appStatesInstance.remoteUserStatus,
                             builder: (context, value, child) {
                               return value
                                   ? ValueListenableBuilder<ProfileData>(
                                       valueListenable:
-                                          appStatesInstance.localUserInfo,
+                                          appStatesInstance.remoteUserInfo,
                                       builder: (context, value, child) {
                                         return Users(
                                             name: "${value.name}",
                                             id: "${value.id}",
                                             status: value.status!);
-                                      })
+                                      },
+                                    )
                                   : const Center(
-                                      child: Text("Sender Offline"),
+                                      child: Text("Receiver Offline"),
                                     );
-                            })),
-                    const SizedBox(
-                      width: 100,
-                      height: 100,
-                      child: Center(
-                          child: Icon(
-                        Icons.sync_alt,
-                        color: Colors.green,
-                      )),
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                    Container(
+                  ),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      socketInstance.updateUsers(appStatesInstance);
+
+                      print('Refresh Button is Clicked!!');
+                    },
+                    child: Container(
                       decoration: BoxDecoration(
                           border: Border.all(width: 1, color: Colors.grey),
                           borderRadius:
-                              const BorderRadius.all(Radius.circular(8))),
-                      width: 350,
-                      height: 150,
-                      //child: const Text("Receiver Offline"),
+                              const BorderRadius.all(Radius.circular(5))),
+                      width: 300,
+                      height: 60,
                       child: ValueListenableBuilder<bool>(
-                        valueListenable: appStatesInstance.remoteUserStatus,
-                        builder: (context, value, child) {
-                          return value
-                              ? ValueListenableBuilder<ProfileData>(
-                                  valueListenable:
-                                      appStatesInstance.remoteUserInfo,
-                                  builder: (context, value, child) {
-                                    return Users(
-                                        name: "${value.name}",
-                                        id: "${value.id}",
-                                        status: value.status!);
-                                  },
-                                )
-                              : const Center(
-                                  child: Text("Receiver Offline"),
-                                );
-                        },
-                      ),
+                          valueListenable: appStatesInstance.localUserStatus,
+                          builder: (_, localUserStatus, __) {
+                            return localUserStatus
+                                ? ValueListenableBuilder<bool>(
+                                    valueListenable:
+                                        appStatesInstance.remoteUserStatus,
+                                    builder: (_, remoteUserStatus, __) {
+                                      return remoteUserStatus
+                                          ? const Center(
+                                              child: Text(
+                                                "Users Active",
+                                                style: TextStyle(
+                                                    color: Colors.green,
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                              ),
+                                            )
+                                          : const Center(
+                                              child: Text("Refresh Users"));
+                                    })
+                                : const Center(child: Text("Refresh Users"));
+                          }),
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(
-                height: 20,
-              ),
-              GestureDetector(
-                onTap: () {
-                  socketInstance.updateUsers(appStatesInstance);
-
-                  print('Refresh Button is Clicked!!');
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                      border: Border.all(width: 1, color: Colors.grey),
-                      borderRadius: const BorderRadius.all(Radius.circular(5))),
-                  width: 300,
-                  height: 60,
-                  child: ValueListenableBuilder<bool>(
-                      valueListenable: appStatesInstance.localUserStatus,
-                      builder: (_, localUserStatus, __) {
-                        return localUserStatus
-                            ? ValueListenableBuilder<bool>(
-                                valueListenable:
-                                    appStatesInstance.remoteUserStatus,
-                                builder: (_, remoteUserStatus, __) {
-                                  return remoteUserStatus
-                                      ? const Center(
-                                          child: Text(
-                                            "Users Active",
-                                            style: TextStyle(
-                                                color: Colors.green,
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                        )
-                                      : const Center(
-                                          child: Text("Refresh Users"));
-                                })
-                            : const Center(child: Text("Refresh Users"));
+                  ),
+                  const SizedBox(
+                    height: 30,
+                  ),
+                  //Create Connection
+                  GestureDetector(
+                    onTap: () {
+                      socketInstance.localInstance.createLocalConnection(
+                          socketInstance.socket!,
+                          appStatesInstance,
+                          reSetterInstance);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                          border: Border.all(width: 1, color: Colors.grey),
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(5))),
+                      width: 300,
+                      height: 60,
+                      child: Center(
+                          //Showing webrtc connection status
+                          child: ValueListenableBuilder<bool>(
+                              valueListenable: appStatesInstance.isSender,
+                              builder: (context, value, child) {
+                                return value
+                                    ? ValueListenableBuilder<String>(
+                                        valueListenable:
+                                            appStatesInstance.localState,
+                                        builder: (context, value, child) {
+                                          return Text(value);
+                                        })
+                                    : ValueListenableBuilder<String>(
+                                        valueListenable:
+                                            appStatesInstance.remoteState,
+                                        builder: (context, value, child) {
+                                          return Text(value);
+                                        });
+                              })
+                          //child: connectBtnText(),
+                          ),
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 30,
+                  ),
+                  //Show Selected File name
+                  ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.isFileSelected,
+                      builder: (_, isFileSelected, __) {
+                        return isFileSelected
+                            ? Text(appStatesInstance.selectedFileName.value)
+                            : const SizedBox(
+                                width: 0,
+                                height: 0,
+                              );
                       }),
-                ),
-              ),
-              const SizedBox(
-                height: 30,
-              ),
-              //Create Connection
-              GestureDetector(
-                onTap: () {
-                  socketInstance.localInstance.createLocalConnection(
-                      socketInstance.socket!,
-                      appStatesInstance,
-                      reSetterInstance);
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                      border: Border.all(width: 1, color: Colors.grey),
-                      borderRadius: const BorderRadius.all(Radius.circular(5))),
-                  width: 300,
-                  height: 60,
-                  child: Center(
-                      //Showing webrtc connection status
-                      child: ValueListenableBuilder<bool>(
+
+                  const SizedBox(
+                    height: 10,
+                  ),
+
+                  // Select file button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      IconButton(
+                          //onPressed: () {},
+                          onPressed: (() {
+                            fileSelectorInstance.selectFile(appStatesInstance);
+                          }),
+                          icon: const Icon(Icons.attach_file)),
+                      const SizedBox(
+                        width: 7,
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: textInputController,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter text here',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(
+                        width: 10,
+                      ),
+                      ValueListenableBuilder<bool>(
                           valueListenable: appStatesInstance.isSender,
                           builder: (context, value, child) {
                             return value
-                                ? ValueListenableBuilder<String>(
+                                ? ValueListenableBuilder<bool>(
                                     valueListenable:
-                                        appStatesInstance.localState,
-                                    builder: (context, value, child) {
-                                      return Text(value);
+                                        appStatesInstance.isFileSelected,
+                                    builder: (context, isFileSelected, child) {
+                                      return isFileSelected
+                                          ? ElevatedButton(
+                                              onPressed: () {
+                                                localSenderInstance.sendFile(
+                                                    socketInstance.localInstance
+                                                        .localDataChannel,
+                                                    fileSelectorInstance
+                                                        .selectedfile,
+                                                    fileSelectorInstance.chunks,
+                                                    appStatesInstance,
+                                                    reSetterInstance);
+                                              },
+                                              child: const Text('Send File'))
+                                          : ElevatedButton(
+                                              onPressed: () {
+                                                localSenderInstance.sendtext(
+                                                  socketInstance.localInstance
+                                                      .localDataChannel,
+                                                  textInputController,
+                                                );
+                                              },
+                                              child: const Text('Send Text'));
                                     })
-                                : ValueListenableBuilder<String>(
+                                : ValueListenableBuilder<bool>(
                                     valueListenable:
-                                        appStatesInstance.remoteState,
-                                    builder: (context, value, child) {
-                                      return Text(value);
+                                        appStatesInstance.isFileSelected,
+                                    builder: (context, isFileSelected, child) {
+                                      return isFileSelected
+                                          ? ElevatedButton(
+                                              onPressed: () {
+                                                remoteSenderInstance.sendFile(
+                                                    socketInstance
+                                                        .remoteInstance
+                                                        .remoteDataChannel,
+                                                    fileSelectorInstance
+                                                        .selectedfile,
+                                                    fileSelectorInstance.chunks,
+                                                    appStatesInstance,
+                                                    reSetterInstance);
+                                              },
+                                              child: const Text('Send File'))
+                                          : ElevatedButton(
+                                              onPressed: () {
+                                                remoteSenderInstance.sendtext(
+                                                  socketInstance.remoteInstance
+                                                      .remoteDataChannel,
+                                                  textInputController,
+                                                );
+                                              },
+                                              child: const Text('Send Text'));
                                     });
-                          })
-                      //child: connectBtnText(),
-                      ),
-                ),
-              ),
-              const SizedBox(
-                height: 30,
-              ),
-              //Show Selected File name
-              ValueListenableBuilder<bool>(
-                  valueListenable: appStatesInstance.isFileSelected,
-                  builder: (_, isFileSelected, __) {
-                    return isFileSelected
-                        ? Text(appStatesInstance.selectedFileName.value)
-                        : const SizedBox(
-                            width: 0,
-                            height: 0,
-                          );
-                  }),
-
-              const SizedBox(
-                height: 10,
-              ),
-
-              // Select file button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  IconButton(
-                      //onPressed: () {},
-                      onPressed: (() {
-                        fileSelectorInstance.selectFile(appStatesInstance);
-                      }),
-                      icon: const Icon(Icons.attach_file)),
-                  const SizedBox(
-                    width: 7,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: textInputController,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: 'Enter text here',
-                      ),
-                    ),
+                          }),
+                    ],
                   ),
                   const SizedBox(
-                    width: 10,
+                    height: 30,
                   ),
+
+                  //Send Progress Indicator
                   ValueListenableBuilder<bool>(
-                      valueListenable: appStatesInstance.isSender,
-                      builder: (context, value, child) {
-                        return value
-                            ? ValueListenableBuilder<bool>(
-                                valueListenable:
-                                    appStatesInstance.isFileSelected,
-                                builder: (context, isFileSelected, child) {
-                                  return isFileSelected
-                                      ? ElevatedButton(
-                                          onPressed: () {
-                                            localSenderInstance.sendFile(
-                                                socketInstance.localInstance
-                                                    .localDataChannel,
-                                                fileSelectorInstance
-                                                    .selectedfile,
-                                                fileSelectorInstance.chunks,
-                                                appStatesInstance,
-                                                reSetterInstance);
-                                          },
-                                          child: const Text('Send File'))
-                                      : ElevatedButton(
-                                          onPressed: () {
-                                            localSenderInstance.sendtext(
-                                              socketInstance.localInstance
-                                                  .localDataChannel,
-                                              textInputController,
-                                            );
-                                          },
-                                          child: const Text('Send Text'));
-                                })
-                            : ValueListenableBuilder<bool>(
-                                valueListenable:
-                                    appStatesInstance.isFileSelected,
-                                builder: (context, isFileSelected, child) {
-                                  return isFileSelected
-                                      ? ElevatedButton(
-                                          onPressed: () {
-                                            remoteSenderInstance.sendFile(
-                                                socketInstance.remoteInstance
-                                                    .remoteDataChannel,
-                                                fileSelectorInstance
-                                                    .selectedfile,
-                                                fileSelectorInstance.chunks,
-                                                appStatesInstance,
-                                                reSetterInstance);
-                                          },
-                                          child: const Text('Send File'))
-                                      : ElevatedButton(
-                                          onPressed: () {
-                                            remoteSenderInstance.sendtext(
-                                              socketInstance.remoteInstance
-                                                  .remoteDataChannel,
-                                              textInputController,
-                                            );
-                                          },
-                                          child: const Text('Send Text'));
-                                });
+                      valueListenable: appStatesInstance.isShowSendProgress,
+                      builder: (context, isShowSendProgress, child) {
+                        return isShowSendProgress
+                            ? SendProgressIndicator(
+                                appStates: appStatesInstance)
+                            : const SizedBox(
+                                width: 0,
+                                height: 0,
+                              );
+                      }),
+                  //Receive Progress Indicator
+                  ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.isShowReceiveProgress,
+                      builder: (context, isShowReceiveProgress, child) {
+                        return isShowReceiveProgress
+                            ? ReceiveProgressIndicator(
+                                appStates: appStatesInstance)
+                            : const SizedBox(
+                                width: 0,
+                                height: 0,
+                              );
+                      }),
+
+                  //Show Send Success Indicator
+                  ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.isShowSendSuccess,
+                      builder: (context, isShowSendSuccess, child) {
+                        return isShowSendSuccess
+                            ? const SendSuccessIndicator()
+                            : const SizedBox(
+                                width: 0,
+                                height: 0,
+                              );
+                      }),
+                  //Show Save Success Indicator
+                  ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.isShowSaveSuccess,
+                      builder: (context, isShowSaveSuccess, child) {
+                        return isShowSaveSuccess
+                            ? const SaveSuccessIndicator()
+                            : const SizedBox(
+                                width: 0,
+                                height: 0,
+                              );
+                      }),
+                  //Show Saving Indicator
+                  ValueListenableBuilder<bool>(
+                      valueListenable: appStatesInstance.isShowSaving,
+                      builder: (context, isShowSaving, child) {
+                        return isShowSaving
+                            ? const FileSavingIndicator()
+                            : const SizedBox(
+                                width: 0,
+                                height: 0,
+                              );
                       }),
                 ],
               ),
-              const SizedBox(
-                height: 30,
-              ),
-
-              //Send Progress Indicator
-              ValueListenableBuilder<bool>(
-                  valueListenable: appStatesInstance.isShowSendProgress,
-                  builder: (context, isShowSendProgress, child) {
-                    return isShowSendProgress
-                        ? SendProgressIndicator(appStates: appStatesInstance)
-                        : const SizedBox(
-                            width: 0,
-                            height: 0,
-                          );
-                  }),
-              //Receive Progress Indicator
-              ValueListenableBuilder<bool>(
-                  valueListenable: appStatesInstance.isShowReceiveProgress,
-                  builder: (context, isShowReceiveProgress, child) {
-                    return isShowReceiveProgress
-                        ? ReceiveProgressIndicator(appStates: appStatesInstance)
-                        : const SizedBox(
-                            width: 0,
-                            height: 0,
-                          );
-                  }),
-
-              //Show Send Success Indicator
-              ValueListenableBuilder<bool>(
-                  valueListenable: appStatesInstance.isShowSendSuccess,
-                  builder: (context, isShowSendSuccess, child) {
-                    return isShowSendSuccess
-                        ? const SendSuccessIndicator()
-                        : const SizedBox(
-                            width: 0,
-                            height: 0,
-                          );
-                  }),
-              //Show Save Success Indicator
-              ValueListenableBuilder<bool>(
-                  valueListenable: appStatesInstance.isShowSaveSuccess,
-                  builder: (context, isShowSaveSuccess, child) {
-                    return isShowSaveSuccess
-                        ? const SaveSuccessIndicator()
-                        : const SizedBox(
-                            width: 0,
-                            height: 0,
-                          );
-                  }),
-              //Show Saving Indicator
-              ValueListenableBuilder<bool>(
-                  valueListenable: appStatesInstance.isShowSaving,
-                  builder: (context, isShowSaving, child) {
-                    return isShowSaving
-                        ? const FileSavingIndicator()
-                        : const SizedBox(
-                            width: 0,
-                            height: 0,
-                          );
-                  }),
-            ],
+            ),
           ),
-        ),
+
+          // File Received Area
+          Container(
+            padding: const EdgeInsets.all(5),
+            width: 300,
+            height: double.infinity,
+            child: ValueListenableBuilder<List<ReceivedFile>>(
+                valueListenable: appStatesInstance.receivedItems,
+                builder: (context, receivedItems, child) {
+                  return receivedItems.isNotEmpty
+                      ? ReceivedFilesArea(appStates: appStatesInstance)
+                      : const Center(
+                          child: Text("No Items received yet!!"),
+                        );
+                }),
+          ),
+        ],
       ),
       // This trailing comma makes auto-formatting nicer for build methods.
     );

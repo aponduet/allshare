@@ -27,6 +27,7 @@ class FileSelector {
       //Make small chunk of message
       fileInBytes = selectedfile!.bytes;
       int chunkSize = 262144;
+      //print("File type is: ${selectedfile!.extension}");
       for (var i = 0; i < fileInBytes!.length; i += chunkSize) {
         chunks.add(fileInBytes!.sublist(
             i,

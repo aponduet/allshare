@@ -13,7 +13,7 @@ class ReceiveProgressIndicator extends StatelessWidget {
         valueListenable: appStates.receiveProgressValue,
         builder: (context, value, child) {
           return LinearPercentIndicator(
-            width: 800.0,
+            width: 600.0,
             lineHeight: 20.0,
             percent: value,
             backgroundColor: Colors.grey,

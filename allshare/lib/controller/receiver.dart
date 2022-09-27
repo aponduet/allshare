@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:allshare/controller/resetter.dart';
 import 'package:allshare/controller/save_file.dart';
 import 'package:allshare/data/app_states.dart';
 import 'package:allshare/model/file_info.dart';
+import 'package:allshare/model/received_file.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 //*********** Local RECEIVER ********* */
@@ -12,6 +12,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 //*********** Local RECEIVER ********* */
 
 class LocalReceiver {
+  ReceivedFile receivedFileInstance = ReceivedFile();
   int totalChunks = 0;
   Saver localFileSaverInstance = Saver();
   localreceiver(
@@ -40,9 +41,25 @@ class LocalReceiver {
           appStates.receiveProgressValue.value = 1;
           appStates.isShowReceiveProgress.value = false;
           appStates.isShowSaving.value = true;
+
+          //Saving System
           Timer(const Duration(seconds: 2), () {
             localFileSaverInstance.saveFile(message.text, appStates, reSetter);
           });
+
+          //Display System
+          // ReceivedFile receivedFileInstance = ReceivedFile();
+          // receivedFileInstance.binary = appStates.receivedChunks.value;
+          // receivedFileInstance.name = fileheaders.name;
+          // receivedFileInstance.extention = fileheaders.extn;
+          // receivedFileInstance.text = fileheaders.textmessage;
+          // receivedFileInstance.time = DateTime.now().hour.toString();
+          // appStates.receivedItems.value =
+          //     List.from(appStates.receivedItems.value)
+          //       ..add(receivedFileInstance);
+
+          //If Notifier do not update widget, then follow https://github.com/flutter/flutter/issues/29958
+
         }
       }
     };
@@ -82,11 +99,25 @@ class RemoteReceiver {
           appStates.receiveProgressValue.value = 1;
           appStates.isShowReceiveProgress.value = false;
           appStates.isShowSaving.value = true;
+          //Saving System
           Timer(const Duration(seconds: 2), () {
             //save file after two seconds
             remoteFileSaverInstance.saveFile(
                 message.text, appStates, reSetterInstance);
           });
+          //Display System
+          // ReceivedFile receivedFileInstance = ReceivedFile();
+          // receivedFileInstance.binary = appStates.receivedChunks.value;
+          // receivedFileInstance.name = fileheaders.name;
+          // receivedFileInstance.extention = fileheaders.extn;
+          // receivedFileInstance.text = fileheaders.textmessage;
+          // receivedFileInstance.time = DateTime.now().hour.toString();
+          // appStates
+          //     .receivedItems.value = List.from(appStates.receivedItems.value)
+          //   ..add(
+          //       receivedFileInstance);
+          //If Notifier do not update widget, then follow https://github.com/flutter/flutter/issues/29958
+
         }
       }
     };

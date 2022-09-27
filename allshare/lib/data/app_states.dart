@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:allshare/model/profileData.dart';
+import 'package:allshare/model/received_file.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 
 class AppStates {
@@ -29,4 +31,8 @@ class AppStates {
   final ValueNotifier<bool> isShowSaveSuccess = ValueNotifier<bool>(false);
   final ValueNotifier<double> sendProgressValue = ValueNotifier<double>(0);
   final ValueNotifier<double> receiveProgressValue = ValueNotifier<double>(0);
+  //Received Display Area
+
+  final ValueNotifier<List<ReceivedFile>> receivedItems =
+      ValueNotifier<List<ReceivedFile>>([]);
 }
