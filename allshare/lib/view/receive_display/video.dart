@@ -30,7 +30,7 @@ class DisplayVideo extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-              child: GestureDetector(
+              child: InkWell(
             onTap: () {
               // print('Clicked run button.');
 
@@ -40,7 +40,7 @@ class DisplayVideo extends StatelessWidget {
                     'start',
                     ['${receivedFile.name}'],
                     runInShell: true,
-                    workingDirectory: '${receivedFile.downloadDirectory}',
+                    workingDirectory: '${receivedFile.dirForCmd}',
                   );
                   print(playStatus);
                 }

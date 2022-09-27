@@ -7,3 +7,10 @@ class Url {
     print('I am from createObjectUrlFromBlob function');
   }
 }
+
+class AnchorElement {
+  String download = '';
+  String href = '';
+  AnchorElement({required this.href});
+  click() {}
+}

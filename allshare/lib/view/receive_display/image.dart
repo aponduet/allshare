@@ -34,16 +34,16 @@ class DisplayImage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-              child: GestureDetector(
+              child: InkWell(
             onTap: () {
               print("Gesture ditector button is clicked");
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) =>
-                        ImageView(appStates: appStates, index: index)),
+                  builder: (context) =>
+                      ImageView(appStates: appStates, index: index),
+                ),
               );
-
               //do something for Image modal
             },
             child: Row(
@@ -59,8 +59,9 @@ class DisplayImage extends StatelessWidget {
                   //   height: 80,
                   //   fit: BoxFit.fill,
                   // ),
-                  child:
-                      Image.memory(converter.getUint8List(receivedFile.binary)),
+                  child: Image.memory(
+                    converter.getUint8List(receivedFile.binary),
+                  ),
                 ),
                 Expanded(
                     child: Padding(

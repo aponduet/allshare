@@ -1,8 +1,5 @@
-import 'package:allshare/data/app_states.dart';
-import 'package:allshare/data/app_data.dart';
 import 'package:allshare/screens/home.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 void main() {
   runApp(const MyApp());

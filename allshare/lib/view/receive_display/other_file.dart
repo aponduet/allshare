@@ -42,22 +42,39 @@ class DisplayOther extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
+            child: InkWell(
+              onTap: () {
+                if (!kIsWeb) {
+                  if (Platform.isWindows) {
+                    var playStatus = Process.run(
+                      'start',
+                      ['${receivedFile.name}'],
+                      runInShell: true,
+                      workingDirectory: '${receivedFile.dirForCmd}',
+                    );
+                    print(playStatus);
+                  }
+                }
+              },
               child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 100,
-                height: 80,
-                child: filetype(),
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 100,
+                    height: 80,
+                    child: filetype(),
+                  ),
+                  Expanded(
+                      child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child:
+                        Text(appStates.receivedItems.value[index].name ?? ""),
+                  )),
+                ],
               ),
-              Expanded(
-                  child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(appStates.receivedItems.value[index].name ?? ""),
-              )),
-            ],
-          )),
+            ),
+          ),
           SizedBox(
             width: 50,
             child: IconButton(
@@ -105,7 +122,7 @@ class DisplayOther extends StatelessWidget {
                 }
               },
             ),
-          )
+          ),
         ],
       ),
     );

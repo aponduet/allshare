@@ -5,7 +5,7 @@ class ReceivedFile {
   String? name = " ";
   String? extention = " ";
   String? path = " ";
-  String? downloadDirectory = " ";
+  String? dirForCmd = " ";
   String? text = " ";
   String? time = DateTime.now().toString();
   bool? isVideo = false;
