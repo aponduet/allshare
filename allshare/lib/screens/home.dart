@@ -1,19 +1,17 @@
 import 'package:allshare/controller/resetter.dart';
+import 'package:allshare/controller/responsive.dart';
 import 'package:allshare/controller/select_file.dart';
 import 'package:allshare/controller/sender.dart';
 import 'package:allshare/controller/websocket.dart';
 import 'package:allshare/data/app_states.dart';
 import 'package:allshare/model/profileData.dart';
-import 'package:allshare/model/received_file.dart';
-import 'package:allshare/view/receive_display/other_file.dart';
+import 'package:allshare/view/receive_display/receive_gellary.dart';
 import 'package:allshare/view/receive_progress.dart';
-import 'package:allshare/view/receive_display/item_list.dart';
 import 'package:allshare/view/save_success.dart';
 import 'package:allshare/view/send_progress.dart';
 import 'package:allshare/view/send_success.dart';
 import 'package:allshare/view/users.dart';
 import 'package:flutter/material.dart';
-import '../controller/button_click.dart';
 import '../view/saving.dart';
 
 class MyHomePage extends StatefulWidget {
@@ -38,7 +36,7 @@ class _MyHomePageState extends State<MyHomePage> {
       RemoteSender(); // RemoteSender class Instance
   final AppStates appStatesInstance = AppStates(); // AppStates class Instance;
   final Resetter reSetterInstance = Resetter(); //Resetter class instance
-
+  final GlobalKey<ScaffoldState> _drawerKey = GlobalKey<ScaffoldState>();
   @override
   dispose() {
     //To stop multiple calling websocket, use the following code.
@@ -60,11 +58,23 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    double width = MediaQuery.of(context).size.width;
+    double height = MediaQuery.of(context).size.height;
     print("homepage build methode is called!!");
     return Scaffold(
-      // appBar: AppBar(
-      //   title: Text(widget.title),
-      // ),
+      key: _drawerKey,
+      drawer: Drawer(
+        child: ReceiveGellary(appStates: appStatesInstance),
+      ),
+      appBar: AppBar(
+        automaticallyImplyLeading: false, //hide default menu icon
+        leading: Responsive.isMobile(context)
+            ? IconButton(
+                icon: const Icon(Icons.heart_broken),
+                onPressed: () => _drawerKey.currentState?.openDrawer())
+            : null,
+        title: const Text("Allshare"),
+      ),
       body: Row(
         children: [
           Expanded(
@@ -94,48 +104,64 @@ class _MyHomePageState extends State<MyHomePage> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Container(
-                            decoration: BoxDecoration(
-                                border:
-                                    Border.all(width: 1, color: Colors.grey),
-                                borderRadius:
-                                    const BorderRadius.all(Radius.circular(8))),
-                            width: 200,
-                            height: 150,
-                            //child: const Text("Sender Offline"),
-                            child: ValueListenableBuilder<bool>(
-                                valueListenable:
-                                    appStatesInstance.localUserStatus,
-                                builder: (context, value, child) {
-                                  return value
-                                      ? ValueListenableBuilder<ProfileData>(
-                                          valueListenable:
-                                              appStatesInstance.localUserInfo,
-                                          builder: (context, value, child) {
-                                            return Users(
-                                                name: "${value.name}",
-                                                id: "${value.id}",
-                                                status: value.status!);
-                                          })
-                                      : const Center(
-                                          child: Text("Sender Offline"),
-                                        );
-                                })),
-                        const SizedBox(
-                          width: 100,
-                          height: 100,
-                          child: Center(
+                          // constraints: BoxConstraints(
+                          //   minWidth: Responsive.value(100, 200, 200, context),
+                          //   maxHeight: Responsive.value(180, 200, 200, context),
+                          // ),
+                          decoration: BoxDecoration(
+                              border: Border.all(width: 1, color: Colors.grey),
+                              borderRadius:
+                                  const BorderRadius.all(Radius.circular(8))),
+                          // width: 200,
+                          // height: 150,
+                          width:
+                              Responsive.value(width * 0.35, 200, 200, context),
+                          height: Responsive.value(80, 150, 150, context),
+                          //child: const Text("Sender Offline"),
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: appStatesInstance.localUserStatus,
+                            builder: (context, value, child) {
+                              return value
+                                  ? ValueListenableBuilder<ProfileData>(
+                                      valueListenable:
+                                          appStatesInstance.localUserInfo,
+                                      builder: (context, value, child) {
+                                        return Users(
+                                            name: "${value.name}",
+                                            id: "${value.id}",
+                                            status: value.status!);
+                                      })
+                                  : const Center(
+                                      child: Text("Sender Offline"),
+                                    );
+                            },
+                          ),
+                        ),
+                        SizedBox(
+                          width:
+                              Responsive.value(width * 0.1, 100, 100, context),
+                          height:
+                              Responsive.value(width * 0.1, 100, 100, context),
+                          child: const Center(
                               child: Icon(
                             Icons.sync_alt,
                             color: Colors.green,
                           )),
                         ),
                         Container(
+                          // constraints: BoxConstraints(
+                          //   minWidth: Responsive.value(100, 200, 200, context),
+                          //   maxHeight: Responsive.value(180, 200, 200, context),
+                          // ),
                           decoration: BoxDecoration(
                               border: Border.all(width: 1, color: Colors.grey),
                               borderRadius:
                                   const BorderRadius.all(Radius.circular(8))),
-                          width: 200,
-                          height: 150,
+                          // width: 200,
+                          // height: 150,
+                          width:
+                              Responsive.value(width * 0.35, 200, 200, context),
+                          height: Responsive.value(80, 150, 150, context),
                           //child: const Text("Receiver Offline"),
                           child: ValueListenableBuilder<bool>(
                             valueListenable: appStatesInstance.remoteUserStatus,
@@ -418,20 +444,8 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
 
           // File Received Area
-          Container(
-            padding: const EdgeInsets.all(5),
-            width: 300,
-            height: double.infinity,
-            child: ValueListenableBuilder<List<ReceivedFile>>(
-                valueListenable: appStatesInstance.receivedItems,
-                builder: (context, receivedItems, child) {
-                  return receivedItems.isNotEmpty
-                      ? ReceivedFilesArea(appStates: appStatesInstance)
-                      : const Center(
-                          child: Text("No Items received yet!!"),
-                        );
-                }),
-          ),
+          if (!Responsive.isMobile(context))
+            ReceiveGellary(appStates: appStatesInstance),
         ],
       ),
       // This trailing comma makes auto-formatting nicer for build methods.
