@@ -103,20 +103,25 @@ class _MyHomePageState extends State<MyHomePage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        //First User Info
                         Container(
-                          // constraints: BoxConstraints(
-                          //   minWidth: Responsive.value(100, 200, 200, context),
-                          //   maxHeight: Responsive.value(180, 200, 200, context),
-                          // ),
+                          constraints: BoxConstraints(
+                            minWidth: Responsive.value(100, 100, 200, context)
+                                .toDouble(),
+                            maxWidth: Responsive.value(200, 200, 200, context)
+                                .toDouble(),
+                          ),
                           decoration: BoxDecoration(
                               border: Border.all(width: 1, color: Colors.grey),
                               borderRadius:
                                   const BorderRadius.all(Radius.circular(8))),
                           // width: 200,
                           // height: 150,
-                          width:
-                              Responsive.value(width * 0.35, 200, 200, context),
-                          height: Responsive.value(80, 150, 150, context),
+                          width: Responsive.value(width * 0.35,
+                                  (width - 300) * 0.35, 200, context)
+                              .toDouble(),
+                          height: Responsive.value(80, 150, 150, context)
+                              .toDouble(),
                           //child: const Text("Sender Offline"),
                           child: ValueListenableBuilder<bool>(
                             valueListenable: appStatesInstance.localUserStatus,
@@ -138,30 +143,37 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                         ),
                         SizedBox(
-                          width:
-                              Responsive.value(width * 0.1, 100, 100, context),
-                          height:
-                              Responsive.value(width * 0.1, 100, 100, context),
+                          width: Responsive.value(width * 0.1,
+                                  (width - 300) * 0.1, 100, context)
+                              .toDouble(),
+                          height: Responsive.value(width * 0.1,
+                                  (width - 300) * 0.1, 100, context)
+                              .toDouble(),
                           child: const Center(
                               child: Icon(
                             Icons.sync_alt,
                             color: Colors.green,
                           )),
                         ),
+                        //2nd User Info
                         Container(
-                          // constraints: BoxConstraints(
-                          //   minWidth: Responsive.value(100, 200, 200, context),
-                          //   maxHeight: Responsive.value(180, 200, 200, context),
-                          // ),
+                          constraints: BoxConstraints(
+                            minWidth: Responsive.value(100, 100, 200, context)
+                                .toDouble(),
+                            maxWidth: Responsive.value(200, 200, 200, context)
+                                .toDouble(),
+                          ),
                           decoration: BoxDecoration(
                               border: Border.all(width: 1, color: Colors.grey),
                               borderRadius:
                                   const BorderRadius.all(Radius.circular(8))),
                           // width: 200,
                           // height: 150,
-                          width:
-                              Responsive.value(width * 0.35, 200, 200, context),
-                          height: Responsive.value(80, 150, 150, context),
+                          width: Responsive.value(width * 0.35,
+                                  (width - 300) * 0.35, 200, context)
+                              .toDouble(),
+                          height: Responsive.value(80, 150, 150, context)
+                              .toDouble(),
                           //child: const Text("Receiver Offline"),
                           child: ValueListenableBuilder<bool>(
                             valueListenable: appStatesInstance.remoteUserStatus,
@@ -190,7 +202,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(
                     height: 20,
                   ),
-                  GestureDetector(
+                  InkWell(
                     onTap: () {
                       socketInstance.updateUsers(appStatesInstance);
 
@@ -231,8 +243,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(
                     height: 30,
                   ),
-                  //Create Connection
-                  GestureDetector(
+                  //Create Connection button
+                  InkWell(
                     onTap: () {
                       socketInstance.localInstance.createLocalConnection(
                           socketInstance.socket!,
@@ -272,6 +284,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(
                     height: 30,
                   ),
+
                   //Show Selected File name
                   ValueListenableBuilder<bool>(
                       valueListenable: appStatesInstance.isFileSelected,

@@ -46,20 +46,6 @@ class LocalReceiver {
           Timer(const Duration(seconds: 2), () {
             localFileSaverInstance.saveFile(message.text, appStates, reSetter);
           });
-
-          //Display System
-          // ReceivedFile receivedFileInstance = ReceivedFile();
-          // receivedFileInstance.binary = appStates.receivedChunks.value;
-          // receivedFileInstance.name = fileheaders.name;
-          // receivedFileInstance.extention = fileheaders.extn;
-          // receivedFileInstance.text = fileheaders.textmessage;
-          // receivedFileInstance.time = DateTime.now().hour.toString();
-          // appStates.receivedItems.value =
-          //     List.from(appStates.receivedItems.value)
-          //       ..add(receivedFileInstance);
-
-          //If Notifier do not update widget, then follow https://github.com/flutter/flutter/issues/29958
-
         }
       }
     };
@@ -105,19 +91,6 @@ class RemoteReceiver {
             remoteFileSaverInstance.saveFile(
                 message.text, appStates, reSetterInstance);
           });
-          //Display System
-          // ReceivedFile receivedFileInstance = ReceivedFile();
-          // receivedFileInstance.binary = appStates.receivedChunks.value;
-          // receivedFileInstance.name = fileheaders.name;
-          // receivedFileInstance.extention = fileheaders.extn;
-          // receivedFileInstance.text = fileheaders.textmessage;
-          // receivedFileInstance.time = DateTime.now().hour.toString();
-          // appStates
-          //     .receivedItems.value = List.from(appStates.receivedItems.value)
-          //   ..add(
-          //       receivedFileInstance);
-          //If Notifier do not update widget, then follow https://github.com/flutter/flutter/issues/29958
-
         }
       }
     };
